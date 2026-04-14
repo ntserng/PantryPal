@@ -1,27 +1,115 @@
 "use client";
-import { useState, useEffect } from "react";
-import { signOut } from "next-auth/react";
 
-export default function ClientHome() {
+import { signOut as firebaseSignOut } from "firebase/auth";
+import { useEffect, useMemo, useState } from "react";
+import {
+  auth,
+  db,
+  doc,
+  getDoc,
+  hasFirebaseConfig,
+  serverTimestamp,
+  setDoc,
+} from "../lib/firebase";
+
+export default function ClientHome({ user }) {
   const [input, setInput] = useState("");
   const [pantry, setPantry] = useState([]);
+  const [pantryLoaded, setPantryLoaded] = useState(false);
 
-  // Load pantry
-  useEffect(() => {
-    const saved = localStorage.getItem("pantry");
-    if (saved) setPantry(JSON.parse(saved));
-  }, []);
+  const userKey = useMemo(() => {
+    return user?.uid || user?.email || "guest";
+  }, [user]);
 
-  // Save pantry
+  const storageKey = useMemo(() => {
+    return `pantry-${userKey}`;
+  }, [userKey]);
+
   useEffect(() => {
-    localStorage.setItem("pantry", JSON.stringify(pantry));
-  }, [pantry]);
+    let cancelled = false;
+
+    const loadPantry = async () => {
+      if (!userKey) return;
+
+      setPantryLoaded(false);
+
+      const loadLocalPantry = () => {
+        const saved = localStorage.getItem(storageKey);
+        if (!saved) return [];
+
+        try {
+          return JSON.parse(saved);
+        } catch {
+          return [];
+        }
+      };
+
+      if (!hasFirebaseConfig() || !db || userKey === "guest") {
+        if (!cancelled) {
+          setPantry(loadLocalPantry());
+          setPantryLoaded(true);
+        }
+        return;
+      }
+
+      try {
+        const snapshot = await getDoc(doc(db, "pantries", userKey));
+
+        if (cancelled) return;
+
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          setPantry(Array.isArray(data.ingredients) ? data.ingredients : []);
+        } else {
+          setPantry(loadLocalPantry());
+        }
+      } catch (error) {
+        console.error("Failed to load pantry from Firestore:", error);
+        if (!cancelled) {
+          setPantry(loadLocalPantry());
+        }
+      } finally {
+        if (!cancelled) setPantryLoaded(true);
+      }
+    };
+
+    loadPantry();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [storageKey, userKey]);
+
+  useEffect(() => {
+    if (!pantryLoaded) return;
+
+    localStorage.setItem(storageKey, JSON.stringify(pantry));
+
+    if (!hasFirebaseConfig() || !db || userKey === "guest") return;
+
+    setDoc(
+      doc(db, "pantries", userKey),
+      {
+        ingredients: pantry,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    ).catch((error) => {
+      console.error("Failed to save pantry to Firestore:", error);
+    });
+  }, [pantry, pantryLoaded, storageKey, userKey]);
 
   const recipes = [
     { name: "Chicken Alfredo", ingredients: ["chicken", "pasta", "cream"] },
     { name: "Omelette", ingredients: ["eggs", "cheese"] },
     { name: "Pasta Primavera", ingredients: ["pasta", "vegetables"] },
     { name: "Caprese Salad", ingredients: ["tomato", "basil", "mozzarella"] },
+    { name: "Fried Rice", ingredients: ["rice", "egg", "vegetables"] },
+    { name: "Grilled Cheese", ingredients: ["bread", "cheese"] },
+    { name: "Tacos", ingredients: ["tortilla", "meat", "cheese"] },
+    { name: "Pancakes", ingredients: ["flour", "egg", "milk"] },
+    { name: "BLT Sandwich", ingredients: ["bread", "bacon", "lettuce", "tomato"] },
+    { name: "Veggie Stir Fry", ingredients: ["vegetables", "soy sauce", "rice"] },
   ];
 
   const addIngredient = () => {
@@ -57,7 +145,7 @@ export default function ClientHome() {
           <h1 className="text-3xl font-bold">🍳 PantryPal</h1>
 
           <button
-            onClick={() => signOut()}
+            onClick={() => firebaseSignOut(auth)}
             className="text-sm text-gray-500 hover:underline"
           >
             Logout
@@ -118,7 +206,7 @@ export default function ClientHome() {
           <div className="bg-white rounded-2xl shadow-md p-6 border">
             <h3 className="text-xl font-semibold mb-4">Recommended Recipes</h3>
 
-            <div className="space-y-4">
+            <div className="recipes-scroll max-h-96 overflow-y-scroll space-y-4 pr-2 md:max-h-[32rem]">
               {sortedRecipes.map((recipe, index) => {
                 const match = getMatch(recipe);
                 const missing = recipe.ingredients.filter(
@@ -140,7 +228,7 @@ export default function ClientHome() {
                     <p className="text-sm mt-2">
                       {missing.length > 0 ? (
                         <>
-                          Missing:{" "}
+                          Missing: {" "}
                           <span className="text-red-400">
                             {missing.join(", ")}
                           </span>

@@ -1,23 +1,45 @@
 "use client";
 
-import { signIn } from "next-auth/react";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth";
 import { useState } from "react";
+import { auth } from "../../lib/firebase";
 
 export default function Login() {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
-    const res = await signIn("credentials", {
-      username,
-      password,
-      redirect: false,
-    });
+    if (!auth) {
+      alert("Firebase is not configured.");
+      return;
+    }
 
-    if (res?.ok) {
+    setLoading(true);
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
       window.location.href = "/";
-    } else {
-      alert("Invalid login");
+    } catch (error) {
+      alert(error?.message || "Invalid login");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateAccount = async () => {
+    if (!auth) {
+      alert("Firebase is not configured.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await createUserWithEmailAndPassword(auth, email, password);
+      window.location.href = "/";
+    } catch (error) {
+      alert(error?.message || "Unable to create account");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -29,9 +51,10 @@ export default function Login() {
         </h1>
 
         <input
-          placeholder="Username"
+          type="email"
+          placeholder="Email"
           className="w-full mb-3 p-2 border rounded"
-          onChange={(e) => setUsername(e.target.value)}
+          onChange={(e) => setEmail(e.target.value)}
         />
 
         <input
@@ -43,13 +66,22 @@ export default function Login() {
 
         <button
           onClick={handleLogin}
-          className="w-full bg-green-500 text-white p-2 rounded hover:bg-green-600"
+          disabled={loading}
+          className="w-full bg-green-500 text-white p-2 rounded hover:bg-green-600 disabled:opacity-60"
         >
           Sign In
         </button>
 
+        <button
+          onClick={handleCreateAccount}
+          disabled={loading}
+          className="w-full mt-3 bg-gray-800 text-white p-2 rounded hover:bg-gray-900 disabled:opacity-60"
+        >
+          Create Account
+        </button>
+
         <p className="text-xs text-gray-400 mt-4 text-center">
-          demo / password
+          Use the same email to return later
         </p>
       </div>
     </div>
