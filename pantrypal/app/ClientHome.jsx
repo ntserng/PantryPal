@@ -225,20 +225,27 @@ export default function ClientHome({ user }) {
                       </span>
                     </div>
 
-                    <p className="text-sm mt-2">
+                    <div className="mt-2 text-sm space-y-1">
+                      <p>
+                        Ingredients: {" "}
+                        <span className="text-gray-600">
+                          {recipe.ingredients.join(", ")}
+                        </span>
+                      </p>
+
                       {missing.length > 0 ? (
-                        <>
+                        <p>
                           Missing: {" "}
                           <span className="text-red-400">
                             {missing.join(", ")}
                           </span>
-                        </>
+                        </p>
                       ) : (
-                        <span className="text-green-500 font-medium">
+                        <p className="text-green-500 font-medium">
                           Ready to cook 🎉
-                        </span>
+                        </p>
                       )}
-                    </p>
+                    </div>
                   </div>
                 );
               })}
