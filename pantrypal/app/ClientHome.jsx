@@ -11,12 +11,15 @@ import {
   serverTimestamp,
   setDoc,
 } from "../lib/firebase";
+import { QUICK_ADD_INGREDIENTS, RECIPE_POOL } from "../lib/recipes";
 
 export default function ClientHome({ user }) {
   const [input, setInput] = useState("");
   const [pantry, setPantry] = useState([]);
   const [pantryLoaded, setPantryLoaded] = useState(false);
   const [dietaryFilter, setDietaryFilter] = useState("none");
+  const [selectedRecipe, setSelectedRecipe] = useState(null);
+  const [selectedServings, setSelectedServings] = useState(1);
 
   const userKey = useMemo(() => {
     return user?.uid || user?.email || "guest";
@@ -100,157 +103,8 @@ export default function ClientHome({ user }) {
     });
   }, [pantry, pantryLoaded, storageKey, userKey]);
 
-  const recipePool = [
-    {
-      name: "Chicken Alfredo",
-      ingredients: ["chicken", "pasta", "cream", "garlic", "parmesan"],
-      dietaryTags: [],
-    },
-    {
-      name: "Omelette",
-      ingredients: ["eggs", "cheese", "milk", "onion", "bell pepper"],
-      dietaryTags: ["vegetarian", "gluten-free"],
-    },
-    {
-      name: "Pasta Primavera",
-      ingredients: ["pasta", "zucchini", "bell pepper", "broccoli", "olive oil"],
-      dietaryTags: ["vegetarian"],
-    },
-    {
-      name: "Caprese Salad",
-      ingredients: ["tomato", "basil", "mozzarella", "olive oil"],
-      dietaryTags: ["vegetarian", "gluten-free"],
-    },
-    {
-      name: "Fried Rice",
-      ingredients: ["rice", "egg", "carrot", "peas", "soy sauce"],
-      dietaryTags: ["dairy-free"],
-    },
-    {
-      name: "Grilled Cheese",
-      ingredients: ["bread", "cheese", "butter"],
-      dietaryTags: ["vegetarian"],
-    },
-    {
-      name: "Tacos",
-      ingredients: ["tortilla", "ground beef", "cheese", "lettuce", "tomato"],
-      dietaryTags: [],
-    },
-    {
-      name: "Pancakes",
-      ingredients: ["flour", "egg", "milk", "sugar", "baking powder"],
-      dietaryTags: ["vegetarian"],
-    },
-    {
-      name: "BLT Sandwich",
-      ingredients: ["bread", "bacon", "lettuce", "tomato", "mayonnaise"],
-      dietaryTags: ["dairy-free"],
-    },
-    {
-      name: "Veggie Stir Fry",
-      ingredients: ["broccoli", "carrot", "bell pepper", "soy sauce", "rice"],
-      dietaryTags: ["vegan", "vegetarian", "dairy-free"],
-    },
-    {
-      name: "Chickpea Curry",
-      ingredients: ["chickpeas", "tomato", "onion", "garlic", "coconut milk"],
-      dietaryTags: ["vegan", "vegetarian", "dairy-free", "gluten-free"],
-    },
-    {
-      name: "Quinoa Bowl",
-      ingredients: ["quinoa", "black beans", "avocado", "corn", "lime"],
-      dietaryTags: ["vegan", "vegetarian", "dairy-free", "gluten-free"],
-    },
-    {
-      name: "Salmon and Veggies",
-      ingredients: ["salmon", "broccoli", "lemon", "olive oil", "garlic"],
-      dietaryTags: ["dairy-free", "gluten-free"],
-    },
-    {
-      name: "Turkey Lettuce Wraps",
-      ingredients: ["ground turkey", "lettuce", "carrot", "soy sauce", "ginger"],
-      dietaryTags: ["dairy-free", "gluten-free"],
-    },
-    {
-      name: "Greek Yogurt Parfait",
-      ingredients: ["greek yogurt", "berries", "honey", "granola"],
-      dietaryTags: ["vegetarian"],
-    },
-    {
-      name: "Tofu Scramble",
-      ingredients: ["tofu", "onion", "bell pepper", "spinach", "turmeric"],
-      dietaryTags: ["vegan", "vegetarian", "dairy-free", "gluten-free"],
-    },
-    {
-      name: "Lentil Soup",
-      ingredients: ["lentils", "carrot", "celery", "onion", "vegetable broth"],
-      dietaryTags: ["vegan", "vegetarian", "dairy-free", "gluten-free"],
-    },
-    {
-      name: "Shrimp Tacos",
-      ingredients: ["shrimp", "tortilla", "cabbage", "lime", "cilantro"],
-      dietaryTags: ["dairy-free"],
-    },
-    {
-      name: "Veggie Burrito Bowl",
-      ingredients: ["rice", "black beans", "corn", "avocado", "salsa"],
-      dietaryTags: ["vegan", "vegetarian", "dairy-free", "gluten-free"],
-    },
-    {
-      name: "Egg Fried Quinoa",
-      ingredients: ["quinoa", "egg", "peas", "carrot", "soy sauce"],
-      dietaryTags: ["vegetarian", "dairy-free", "gluten-free"],
-    },
-    {
-      name: "Baked Potato Bar",
-      ingredients: ["potato", "cheddar", "green onion", "sour cream", "beans"],
-      dietaryTags: ["vegetarian", "gluten-free"],
-    },
-    {
-      name: "Peanut Noodles",
-      ingredients: ["noodles", "peanut butter", "soy sauce", "garlic", "green onion"],
-      dietaryTags: ["vegan", "vegetarian", "dairy-free"],
-    },
-    {
-      name: "Chicken Fajita Bowl",
-      ingredients: ["chicken", "rice", "bell pepper", "onion", "lime"],
-      dietaryTags: ["dairy-free", "gluten-free"],
-    },
-    {
-      name: "Tomato Basil Soup",
-      ingredients: ["tomato", "basil", "garlic", "onion", "vegetable broth"],
-      dietaryTags: ["vegan", "vegetarian", "dairy-free", "gluten-free"],
-    },
-  ];
-
-  const quickAddIngredients = [
-    "rice",
-    "pasta",
-    "egg",
-    "eggs",
-    "milk",
-    "cheese",
-    "bread",
-    "chicken",
-    "ground beef",
-    "salmon",
-    "tofu",
-    "chickpeas",
-    "black beans",
-    "potato",
-    "broccoli",
-    "spinach",
-    "tomato",
-    "onion",
-    "garlic",
-    "bell pepper",
-    "carrot",
-    "avocado",
-    "quinoa",
-    "lentils",
-    "yogurt",
-    "olive oil",
-  ];
+  const recipePool = RECIPE_POOL;
+  const quickAddIngredients = QUICK_ADD_INGREDIENTS;
 
   const addIngredient = () => {
     if (!input.trim()) return;
@@ -271,8 +125,46 @@ export default function ClientHome({ user }) {
   };
 
   const getMatch = (recipe) => {
-    const matches = recipe.ingredients.filter((i) => pantry.includes(i)).length;
+    const matches = recipe.ingredients.filter((i) => pantry.includes(i.name)).length;
     return Math.round((matches / recipe.ingredients.length) * 100);
+  };
+
+  const formatQuantity = (value) => {
+    if (!Number.isFinite(value)) return value;
+
+    if (Math.abs(value - Math.round(value)) < 0.001) {
+      return Math.round(value);
+    }
+
+    return Number(value.toFixed(2));
+  };
+
+  const getScaledIngredient = (ingredient, recipeServings) => {
+    const servings = recipeServings || 1;
+    const scale = selectedServings / servings;
+
+    return {
+      ...ingredient,
+      scaledQuantity: formatQuantity(ingredient.quantity * scale),
+    };
+  };
+
+  const getRecipeImageUrl = (recipe) => {
+    const query = encodeURIComponent(`${recipe.name} food`);
+    return `https://source.unsplash.com/900x600/?${query}`;
+  };
+
+  const getRecipeSteps = (recipe) => {
+    if (Array.isArray(recipe.steps) && recipe.steps.length > 0) {
+      return recipe.steps;
+    }
+
+    return [
+      `Gather ingredients: ${recipe.ingredients.map((i) => i.name).join(", ")}.`,
+      "Prep and chop ingredients into bite-sized pieces.",
+      "Cook the main components over medium heat until done.",
+      "Season to taste, plate, and serve warm.",
+    ];
   };
 
   const filteredRecipes = recipePool.filter((recipe) => {
@@ -380,13 +272,17 @@ export default function ClientHome({ user }) {
               {sortedRecipes.map((recipe, index) => {
                 const match = getMatch(recipe);
                 const missing = recipe.ingredients.filter(
-                  (i) => !pantry.includes(i),
+                  (i) => !pantry.includes(i.name),
                 );
 
                 return (
                   <div
                     key={index}
-                    className="p-4 rounded-xl border hover:shadow-lg transition"
+                    className="p-4 rounded-xl border hover:shadow-lg transition cursor-pointer"
+                    onClick={() => {
+                      setSelectedRecipe(recipe);
+                      setSelectedServings(recipe.servings || 1);
+                    }}
                   >
                     <div className="flex justify-between">
                       <h4 className="font-medium">{recipe.name}</h4>
@@ -408,7 +304,7 @@ export default function ClientHome({ user }) {
                       <p>
                         Ingredients: {" "}
                         <span className="text-gray-600">
-                          {recipe.ingredients.join(", ")}
+                          {recipe.ingredients.map((i) => i.name).join(", ")}
                         </span>
                       </p>
 
@@ -416,7 +312,7 @@ export default function ClientHome({ user }) {
                         <p>
                           Missing: {" "}
                           <span className="text-red-400">
-                            {missing.join(", ")}
+                            {missing.map((i) => i.name).join(", ")}
                           </span>
                         </p>
                       ) : (
@@ -424,6 +320,10 @@ export default function ClientHome({ user }) {
                           Ready to cook 🎉
                         </p>
                       )}
+
+                      <p className="text-xs text-gray-400 pt-1">
+                        Click to view full recipe
+                      </p>
                     </div>
                   </div>
                 );
@@ -438,6 +338,100 @@ export default function ClientHome({ user }) {
           </div>
         </div>
       </div>
+
+      {selectedRecipe && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={() => setSelectedRecipe(null)}
+        >
+          <div
+            className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border overflow-hidden max-h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={getRecipeImageUrl(selectedRecipe)}
+              alt={selectedRecipe.name}
+              className="w-full h-56 object-cover"
+            />
+
+            <div className="p-6 overflow-y-auto">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-2xl font-bold">{selectedRecipe.name}</h3>
+                  {selectedRecipe.dietaryTags.length > 0 && (
+                    <p className="text-sm text-indigo-600 mt-1">
+                      {selectedRecipe.dietaryTags.join(" • ")}
+                    </p>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => setSelectedRecipe(null)}
+                  className="text-sm px-3 py-1 rounded-lg border hover:bg-gray-50"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="mt-6 grid md:grid-cols-2 gap-6">
+                <div>
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <h4 className="font-semibold">Ingredients</h4>
+                    <label className="text-xs text-gray-500 flex items-center gap-2">
+                      Servings
+                      <input
+                        type="number"
+                        min={1}
+                        value={selectedServings}
+                        onChange={(e) => {
+                          const nextValue = Number(e.target.value);
+                          setSelectedServings(Number.isNaN(nextValue) ? 1 : Math.max(1, nextValue));
+                        }}
+                        className="w-16 px-2 py-1 border rounded-md text-sm"
+                      />
+                    </label>
+                  </div>
+
+                  <p className="text-xs text-gray-500 mb-3">
+                    Base recipe: {selectedRecipe.servings} serving(s)
+                  </p>
+
+                  <ul className="space-y-2 text-sm text-gray-700">
+                    {selectedRecipe.ingredients.map((ingredient) => {
+                      const hasIngredient = pantry.includes(ingredient.name);
+                      const scaled = getScaledIngredient(ingredient, selectedRecipe.servings);
+
+                      return (
+                        <li
+                          key={ingredient.name}
+                          className={`px-3 py-2 rounded-lg border ${
+                            hasIngredient
+                              ? "bg-green-50 border-green-200 text-green-800"
+                              : "bg-red-50 border-red-200 text-red-700"
+                          }`}
+                        >
+                          {hasIngredient ? "✓" : "•"} {scaled.scaledQuantity} {scaled.unit} {scaled.name}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+
+                <div>
+                  <h4 className="font-semibold mb-2">Steps</h4>
+                  <ol className="space-y-3 text-sm text-gray-700 list-decimal list-inside">
+                    {getRecipeSteps(selectedRecipe).map((step, index) => (
+                      <li key={index} className="leading-relaxed">
+                        {step}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
