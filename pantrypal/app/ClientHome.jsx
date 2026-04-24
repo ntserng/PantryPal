@@ -13,13 +13,68 @@ import {
 } from "../lib/firebase";
 import { QUICK_ADD_INGREDIENTS, RECIPE_POOL } from "../lib/recipes";
 
+// Returns days until expiry (negative = already expired)
+function daysUntilExpiry(expiryDate) {
+  if (!expiryDate) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const expiry = new Date(expiryDate);
+  expiry.setHours(0, 0, 0, 0);
+  return Math.round((expiry - today) / (1000 * 60 * 60 * 24));
+}
+
+function getUrgency(expiryDate) {
+  const days = daysUntilExpiry(expiryDate);
+  if (days === null) return "none";
+  if (days < 0) return "expired";
+  if (days <= 2) return "critical"; // expires today, tomorrow, or day after
+  if (days <= 5) return "warning"; // expires within 5 days
+  return "ok";
+}
+
+const URGENCY_STYLES = {
+  expired: {
+    badge: "bg-red-100 text-red-700 border-red-200",
+    label: (days) => "Expired",
+    dot: "bg-red-500",
+    ring: "border-red-300",
+  },
+  critical: {
+    badge: "bg-orange-100 text-orange-700 border-orange-200",
+    label: (days) => (days === 0 ? "Expires today!" : `${days}d left`),
+    dot: "bg-orange-400",
+    ring: "border-orange-300",
+  },
+  warning: {
+    badge: "bg-yellow-100 text-yellow-700 border-yellow-200",
+    label: (days) => `${days}d left`,
+    dot: "bg-yellow-400",
+    ring: "border-yellow-200",
+  },
+  ok: {
+    badge: "bg-green-50 text-green-600 border-green-100",
+    label: (days) => `${days}d left`,
+    dot: "bg-green-400",
+    ring: "border-green-100",
+  },
+  none: {
+    badge: "",
+    label: () => "",
+    dot: "bg-gray-300",
+    ring: "",
+  },
+};
+
 export default function ClientHome({ user }) {
   const [input, setInput] = useState("");
+  const [expiryInput, setExpiryInput] = useState("");
   const [pantry, setPantry] = useState([]);
   const [pantryLoaded, setPantryLoaded] = useState(false);
   const [dietaryFilter, setDietaryFilter] = useState("none");
   const [selectedRecipe, setSelectedRecipe] = useState(null);
   const [selectedServings, setSelectedServings] = useState(1);
+  const [urgencyFilter, setUrgencyFilter] = useState("all"); // "all" | "expiring"
+  const [dismissedAlerts, setDismissedAlerts] = useState([]);
 
   const userKey = useMemo(() => {
     return user?.uid || user?.email || "guest";
@@ -34,13 +89,11 @@ export default function ClientHome({ user }) {
 
     const loadPantry = async () => {
       if (!userKey) return;
-
       setPantryLoaded(false);
 
       const loadLocalPantry = () => {
         const saved = localStorage.getItem(storageKey);
         if (!saved) return [];
-
         try {
           return JSON.parse(saved);
         } catch {
@@ -58,27 +111,28 @@ export default function ClientHome({ user }) {
 
       try {
         const snapshot = await getDoc(doc(db, "pantries", userKey));
-
         if (cancelled) return;
-
         if (snapshot.exists()) {
           const data = snapshot.data();
-          setPantry(Array.isArray(data.ingredients) ? data.ingredients : []);
+          // Support both old string[] format and new {name, expiry}[] format
+          const raw = Array.isArray(data.ingredients) ? data.ingredients : [];
+          setPantry(
+            raw.map((i) =>
+              typeof i === "string" ? { name: i, expiry: null } : i,
+            ),
+          );
         } else {
           setPantry(loadLocalPantry());
         }
       } catch (error) {
         console.error("Failed to load pantry from Firestore:", error);
-        if (!cancelled) {
-          setPantry(loadLocalPantry());
-        }
+        if (!cancelled) setPantry(loadLocalPantry());
       } finally {
         if (!cancelled) setPantryLoaded(true);
       }
     };
 
     loadPantry();
-
     return () => {
       cancelled = true;
     };
@@ -86,21 +140,15 @@ export default function ClientHome({ user }) {
 
   useEffect(() => {
     if (!pantryLoaded) return;
-
     localStorage.setItem(storageKey, JSON.stringify(pantry));
-
     if (!hasFirebaseConfig() || !db || userKey === "guest") return;
-
     setDoc(
       doc(db, "pantries", userKey),
-      {
-        ingredients: pantry,
-        updatedAt: serverTimestamp(),
-      },
+      { ingredients: pantry, updatedAt: serverTimestamp() },
       { merge: true },
-    ).catch((error) => {
-      console.error("Failed to save pantry to Firestore:", error);
-    });
+    ).catch((error) =>
+      console.error("Failed to save pantry to Firestore:", error),
+    );
   }, [pantry, pantryLoaded, storageKey, userKey]);
 
   const recipePool = RECIPE_POOL;
@@ -108,41 +156,37 @@ export default function ClientHome({ user }) {
 
   const addIngredient = () => {
     if (!input.trim()) return;
-
-    const item = input.toLowerCase();
-    if (pantry.includes(item)) return;
-
-    setPantry([...pantry, item]);
+    const name = input.toLowerCase().trim();
+    if (pantry.some((i) => i.name === name)) return;
+    setPantry([...pantry, { name, expiry: expiryInput || null }]);
     setInput("");
+    setExpiryInput("");
   };
 
-  const removeIngredient = (item) => {
-    setPantry(pantry.filter((i) => i !== item));
+  const removeIngredient = (name) => {
+    setPantry(pantry.filter((i) => i.name !== name));
   };
 
-  const clearPantry = () => {
-    setPantry([]);
-  };
+  const clearPantry = () => setPantry([]);
+
+  // Pantry names for recipe matching
+  const pantryNames = useMemo(() => pantry.map((i) => i.name), [pantry]);
 
   const getMatch = (recipe) => {
-    const matches = recipe.ingredients.filter((i) => pantry.includes(i.name)).length;
+    const matches = recipe.ingredients.filter((i) =>
+      pantryNames.includes(i.name),
+    ).length;
     return Math.round((matches / recipe.ingredients.length) * 100);
   };
 
   const formatQuantity = (value) => {
     if (!Number.isFinite(value)) return value;
-
-    if (Math.abs(value - Math.round(value)) < 0.001) {
-      return Math.round(value);
-    }
-
+    if (Math.abs(value - Math.round(value)) < 0.001) return Math.round(value);
     return Number(value.toFixed(2));
   };
 
   const getScaledIngredient = (ingredient, recipeServings) => {
-    const servings = recipeServings || 1;
-    const scale = selectedServings / servings;
-
+    const scale = selectedServings / (recipeServings || 1);
     return {
       ...ingredient,
       scaledQuantity: formatQuantity(ingredient.quantity * scale),
@@ -155,10 +199,8 @@ export default function ClientHome({ user }) {
   };
 
   const getRecipeSteps = (recipe) => {
-    if (Array.isArray(recipe.steps) && recipe.steps.length > 0) {
+    if (Array.isArray(recipe.steps) && recipe.steps.length > 0)
       return recipe.steps;
-    }
-
     return [
       `Gather ingredients: ${recipe.ingredients.map((i) => i.name).join(", ")}.`,
       "Prep and chop ingredients into bite-sized pieces.",
@@ -167,12 +209,50 @@ export default function ClientHome({ user }) {
     ];
   };
 
+  // Items expiring within 5 days or already expired, not dismissed
+  const urgentItems = useMemo(() => {
+    return pantry.filter((item) => {
+      const urgency = getUrgency(item.expiry);
+      return (
+        (urgency === "expired" ||
+          urgency === "critical" ||
+          urgency === "warning") &&
+        !dismissedAlerts.includes(item.name)
+      );
+    });
+  }, [pantry, dismissedAlerts]);
+
+  const filteredPantry = useMemo(() => {
+    if (urgencyFilter === "expiring") {
+      return pantry.filter((i) => {
+        const u = getUrgency(i.expiry);
+        return u === "expired" || u === "critical" || u === "warning";
+      });
+    }
+    return pantry;
+  }, [pantry, urgencyFilter]);
+
   const filteredRecipes = recipePool.filter((recipe) => {
     if (dietaryFilter === "none") return true;
     return recipe.dietaryTags.includes(dietaryFilter);
   });
 
-  const sortedRecipes = [...filteredRecipes].sort((a, b) => getMatch(b) - getMatch(a));
+  // If urgency filter active, boost recipes that use expiring items
+  const sortedRecipes = useMemo(() => {
+    return [...filteredRecipes].sort((a, b) => {
+      if (urgencyFilter === "expiring") {
+        const expiringNames = urgentItems.map((i) => i.name);
+        const aUses = a.ingredients.filter((i) =>
+          expiringNames.includes(i.name),
+        ).length;
+        const bUses = b.ingredients.filter((i) =>
+          expiringNames.includes(i.name),
+        ).length;
+        if (bUses !== aUses) return bUses - aUses;
+      }
+      return getMatch(b) - getMatch(a);
+    });
+  }, [filteredRecipes, urgencyFilter, urgentItems, pantryNames]);
 
   return (
     <div className="bg-gradient-to-br from-gray-50 to-gray-200 min-h-screen p-8 text-gray-900">
@@ -180,7 +260,6 @@ export default function ClientHome({ user }) {
         {/* HEADER */}
         <div className="flex justify-between items-center mb-10">
           <h1 className="text-3xl font-bold">🍳 PantryPal</h1>
-
           <button
             onClick={() => firebaseSignOut(auth)}
             className="text-sm text-gray-500 hover:underline"
@@ -199,14 +278,77 @@ export default function ClientHome({ user }) {
           </p>
         </div>
 
+        {/* URGENCY ALERT BANNER */}
+        {urgentItems.length > 0 && (
+          <div className="mb-6 rounded-2xl border border-orange-200 bg-orange-50 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold text-orange-700 text-sm mb-2">
+                  ⚠️ {urgentItems.length} ingredient
+                  {urgentItems.length > 1 ? "s" : ""} need
+                  {urgentItems.length === 1 ? "s" : ""} attention
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {urgentItems.map((item) => {
+                    const urgency = getUrgency(item.expiry);
+                    const days = daysUntilExpiry(item.expiry);
+                    const style = URGENCY_STYLES[urgency];
+                    return (
+                      <span
+                        key={item.name}
+                        className={`text-xs px-2 py-1 rounded-full border font-medium ${style.badge}`}
+                      >
+                        {item.name} — {style.label(days)}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <button
+                  onClick={() =>
+                    setUrgencyFilter(
+                      urgencyFilter === "expiring" ? "all" : "expiring",
+                    )
+                  }
+                  className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition ${
+                    urgencyFilter === "expiring"
+                      ? "bg-orange-500 text-white border-orange-500"
+                      : "bg-white text-orange-600 border-orange-300 hover:bg-orange-50"
+                  }`}
+                >
+                  {urgencyFilter === "expiring"
+                    ? "Show all"
+                    : "Prioritize these"}
+                </button>
+                <button
+                  onClick={() =>
+                    setDismissedAlerts(urgentItems.map((i) => i.name))
+                  }
+                  className="text-xs px-3 py-1.5 rounded-lg border bg-white text-gray-500 border-gray-200 hover:bg-gray-50"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* INPUT */}
-        <div className="flex gap-4 mb-10">
+        <div className="flex gap-3 mb-4">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addIngredient()}
             placeholder="Add ingredient (e.g. rice)"
             className="flex-1 p-3 rounded-xl border shadow-sm"
+          />
+          <input
+            type="date"
+            value={expiryInput}
+            onChange={(e) => setExpiryInput(e.target.value)}
+            title="Expiry date (optional)"
+            className="p-3 rounded-xl border shadow-sm text-sm text-gray-500 w-40"
           />
           <button
             onClick={addIngredient}
@@ -232,21 +374,86 @@ export default function ClientHome({ user }) {
         <div className="grid md:grid-cols-2 gap-8">
           {/* PANTRY */}
           <div className="bg-white rounded-2xl shadow-md p-6 border">
-            <h3 className="text-xl font-semibold mb-4">Your Pantry</h3>
-
-            {pantry.length === 0 ? (
-              <p className="text-gray-400">No ingredients yet — add some!</p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {pantry.map((item, index) => (
-                  <span
-                    key={index}
-                    onClick={() => removeIngredient(item)}
-                    className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm cursor-pointer hover:bg-green-200"
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold">Your Pantry</h3>
+              <div className="flex gap-2">
+                <button
+                  onClick={() =>
+                    setUrgencyFilter(
+                      urgencyFilter === "expiring" ? "all" : "expiring",
+                    )
+                  }
+                  className={`text-xs px-3 py-1 rounded-full border transition ${
+                    urgencyFilter === "expiring"
+                      ? "bg-orange-100 text-orange-600 border-orange-200"
+                      : "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100"
+                  }`}
+                >
+                  {urgencyFilter === "expiring" ? "All items" : "Expiring soon"}
+                </button>
+                {pantry.length > 0 && (
+                  <button
+                    onClick={clearPantry}
+                    className="text-xs px-3 py-1 rounded-full border bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100"
                   >
-                    {item} ✕
-                  </span>
-                ))}
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {filteredPantry.length === 0 ? (
+              <p className="text-gray-400">
+                {urgencyFilter === "expiring"
+                  ? "No expiring items 🎉"
+                  : "No ingredients yet — add some!"}
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {filteredPantry.map((item, index) => {
+                  const urgency = getUrgency(item.expiry);
+                  const days = daysUntilExpiry(item.expiry);
+                  const style = URGENCY_STYLES[urgency];
+
+                  return (
+                    <div
+                      key={index}
+                      className={`flex items-center justify-between px-3 py-2 rounded-xl border ${
+                        urgency !== "none" ? style.ring : "border-gray-100"
+                      } bg-white hover:bg-gray-50 group transition`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className={`w-2 h-2 rounded-full shrink-0 ${style.dot}`}
+                        />
+                        <span className="text-sm text-gray-800 truncate">
+                          {item.name}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 ml-2">
+                        {urgency !== "none" && (
+                          <span
+                            className={`text-xs px-2 py-0.5 rounded-full border font-medium ${style.badge}`}
+                          >
+                            {style.label(days)}
+                          </span>
+                        )}
+                        {item.expiry && urgency === "none" && (
+                          <span className="text-xs text-gray-400">
+                            {style.label(days)}
+                          </span>
+                        )}
+                        <button
+                          onClick={() => removeIngredient(item.name)}
+                          className="text-gray-300 hover:text-red-400 text-sm opacity-0 group-hover:opacity-100 transition"
+                          title="Remove"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -254,7 +461,14 @@ export default function ClientHome({ user }) {
           {/* RECIPES */}
           <div className="bg-white rounded-2xl shadow-md p-6 border">
             <div className="flex items-center justify-between mb-4 gap-3">
-              <h3 className="text-xl font-semibold">Recommended Recipes</h3>
+              <h3 className="text-xl font-semibold">
+                Recommended Recipes
+                {urgencyFilter === "expiring" && (
+                  <span className="ml-2 text-xs font-normal text-orange-500">
+                    · sorted by expiring items
+                  </span>
+                )}
+              </h3>
               <select
                 value={dietaryFilter}
                 onChange={(e) => setDietaryFilter(e.target.value)}
@@ -272,7 +486,10 @@ export default function ClientHome({ user }) {
               {sortedRecipes.map((recipe, index) => {
                 const match = getMatch(recipe);
                 const missing = recipe.ingredients.filter(
-                  (i) => !pantry.includes(i.name),
+                  (i) => !pantryNames.includes(i.name),
+                );
+                const usesExpiringItems = urgentItems.filter((u) =>
+                  recipe.ingredients.some((i) => i.name === u.name),
                 );
 
                 return (
@@ -284,33 +501,49 @@ export default function ClientHome({ user }) {
                       setSelectedServings(recipe.servings || 1);
                     }}
                   >
-                    <div className="flex justify-between">
+                    <div className="flex justify-between items-start">
                       <h4 className="font-medium">{recipe.name}</h4>
-                      <span className="text-green-600 text-sm font-semibold">
+                      <span className="text-green-600 text-sm font-semibold shrink-0 ml-2">
                         {match}% match
                       </span>
                     </div>
 
+                    {usesExpiringItems.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {usesExpiringItems.map((u) => {
+                          const urgency = getUrgency(u.expiry);
+                          const style = URGENCY_STYLES[urgency];
+                          return (
+                            <span
+                              key={u.name}
+                              className={`text-xs px-2 py-0.5 rounded-full border ${style.badge}`}
+                            >
+                              Uses {u.name} (
+                              {style.label(daysUntilExpiry(u.expiry))})
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+
                     <div className="mt-2 text-sm space-y-1">
                       {recipe.dietaryTags.length > 0 && (
                         <p>
-                          Diet: {" "}
+                          Diet:{" "}
                           <span className="text-indigo-600">
                             {recipe.dietaryTags.join(", ")}
                           </span>
                         </p>
                       )}
-
                       <p>
-                        Ingredients: {" "}
+                        Ingredients:{" "}
                         <span className="text-gray-600">
                           {recipe.ingredients.map((i) => i.name).join(", ")}
                         </span>
                       </p>
-
                       {missing.length > 0 ? (
                         <p>
-                          Missing: {" "}
+                          Missing:{" "}
                           <span className="text-red-400">
                             {missing.map((i) => i.name).join(", ")}
                           </span>
@@ -320,7 +553,6 @@ export default function ClientHome({ user }) {
                           Ready to cook 🎉
                         </p>
                       )}
-
                       <p className="text-xs text-gray-400 pt-1">
                         Click to view full recipe
                       </p>
@@ -339,6 +571,7 @@ export default function ClientHome({ user }) {
         </div>
       </div>
 
+      {/* RECIPE MODAL */}
       {selectedRecipe && (
         <div
           className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
@@ -353,7 +586,6 @@ export default function ClientHome({ user }) {
               alt={selectedRecipe.name}
               className="w-full h-56 object-cover"
             />
-
             <div className="p-6 overflow-y-auto">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -364,7 +596,6 @@ export default function ClientHome({ user }) {
                     </p>
                   )}
                 </div>
-
                 <button
                   onClick={() => setSelectedRecipe(null)}
                   className="text-sm px-3 py-1 rounded-lg border hover:bg-gray-50"
@@ -385,21 +616,38 @@ export default function ClientHome({ user }) {
                         value={selectedServings}
                         onChange={(e) => {
                           const nextValue = Number(e.target.value);
-                          setSelectedServings(Number.isNaN(nextValue) ? 1 : Math.max(1, nextValue));
+                          setSelectedServings(
+                            Number.isNaN(nextValue)
+                              ? 1
+                              : Math.max(1, nextValue),
+                          );
                         }}
                         className="w-16 px-2 py-1 border rounded-md text-sm"
                       />
                     </label>
                   </div>
-
                   <p className="text-xs text-gray-500 mb-3">
                     Base recipe: {selectedRecipe.servings} serving(s)
                   </p>
-
                   <ul className="space-y-2 text-sm text-gray-700">
                     {selectedRecipe.ingredients.map((ingredient) => {
-                      const hasIngredient = pantry.includes(ingredient.name);
-                      const scaled = getScaledIngredient(ingredient, selectedRecipe.servings);
+                      const hasIngredient = pantryNames.includes(
+                        ingredient.name,
+                      );
+                      const scaled = getScaledIngredient(
+                        ingredient,
+                        selectedRecipe.servings,
+                      );
+                      const pantryItem = pantry.find(
+                        (p) => p.name === ingredient.name,
+                      );
+                      const urgency = pantryItem
+                        ? getUrgency(pantryItem.expiry)
+                        : "none";
+                      const days = pantryItem
+                        ? daysUntilExpiry(pantryItem.expiry)
+                        : null;
+                      const style = URGENCY_STYLES[urgency];
 
                       return (
                         <li
@@ -410,13 +658,25 @@ export default function ClientHome({ user }) {
                               : "bg-red-50 border-red-200 text-red-700"
                           }`}
                         >
-                          {hasIngredient ? "✓" : "•"} {scaled.scaledQuantity} {scaled.unit} {scaled.name}
+                          <div className="flex items-center justify-between gap-2">
+                            <span>
+                              {hasIngredient ? "✓" : "•"}{" "}
+                              {scaled.scaledQuantity} {scaled.unit}{" "}
+                              {scaled.name}
+                            </span>
+                            {hasIngredient && urgency !== "none" && (
+                              <span
+                                className={`text-xs px-1.5 py-0.5 rounded-full border shrink-0 ${style.badge}`}
+                              >
+                                {style.label(days)}
+                              </span>
+                            )}
+                          </div>
                         </li>
                       );
                     })}
                   </ul>
                 </div>
-
                 <div>
                   <h4 className="font-semibold mb-2">Steps</h4>
                   <ol className="space-y-3 text-sm text-gray-700 list-decimal list-inside">
