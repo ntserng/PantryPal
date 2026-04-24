@@ -12,6 +12,7 @@ import {
   setDoc,
 } from "../lib/firebase";
 import { QUICK_ADD_INGREDIENTS, RECIPE_POOL } from "../lib/recipes";
+import BarcodeScanner from "./components/BarcodeScanner";
 
 // ─── Expiry helpers ───────────────────────────────────────────────────────────
 
@@ -86,6 +87,7 @@ export default function ClientHome({ user }) {
   const [urgencyFilter, setUrgencyFilter] = useState("all");
   const [dismissedAlerts, setDismissedAlerts] = useState([]);
   const [addFocus, setAddFocus] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
 
   const userKey = useMemo(() => user?.uid || user?.email || "guest", [user]);
   const storageKey = useMemo(() => `pantry-${userKey}`, [userKey]);
@@ -155,6 +157,18 @@ export default function ClientHome({ user }) {
     setPantry([...pantry, { name, expiry: expiryInput || null }]);
     setInput("");
     setExpiryInput("");
+  };
+
+  const handleBarcodeScanned = (ingredient) => {
+    const name = ingredient.name.toLowerCase().trim();
+    if (pantry.some((i) => i.name === name)) return;
+
+    // Calculate expiry date from days offset
+    const today = new Date();
+    const expiryDate = new Date(today.getTime() + ingredient.expiry * 24 * 60 * 60 * 1000);
+    const expiryStr = expiryDate.toISOString().split("T")[0];
+
+    setPantry([...pantry, { name, expiry: expiryStr }]);
   };
 
   const removeIngredient = (name) =>
@@ -571,6 +585,20 @@ export default function ClientHome({ user }) {
             onChange={(e) => setExpiryInput(e.target.value)}
             title="Expiry date (optional)"
           />
+          <button
+            style={{
+              ...S.addBtn,
+              fontSize: "0.75rem",
+              padding: "7px 12px",
+              background: "#7c6b5f",
+            }}
+            onClick={() => setShowScanner(true)}
+            title="Scan barcode"
+            onMouseEnter={(e) => (e.target.style.background = "#6b5c51")}
+            onMouseLeave={(e) => (e.target.style.background = "#7c6b5f")}
+          >
+            📷
+          </button>
           <button
             style={S.addBtn}
             onClick={addIngredient}
@@ -1136,6 +1164,14 @@ export default function ClientHome({ user }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* BARCODE SCANNER MODAL */}
+      {showScanner && (
+        <BarcodeScanner
+          onScan={handleBarcodeScanned}
+          onClose={() => setShowScanner(false)}
+        />
       )}
     </div>
   );
