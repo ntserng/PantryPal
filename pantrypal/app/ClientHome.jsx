@@ -13,7 +13,8 @@ import {
 } from "../lib/firebase";
 import { QUICK_ADD_INGREDIENTS, RECIPE_POOL } from "../lib/recipes";
 
-// Returns days until expiry (negative = already expired)
+// ─── Expiry helpers ───────────────────────────────────────────────────────────
+
 function daysUntilExpiry(expiryDate) {
   if (!expiryDate) return null;
   const today = new Date();
@@ -27,45 +28,54 @@ function getUrgency(expiryDate) {
   const days = daysUntilExpiry(expiryDate);
   if (days === null) return "none";
   if (days < 0) return "expired";
-  if (days <= 2) return "critical"; // expires today, tomorrow, or day after
-  if (days <= 5) return "warning"; // expires within 5 days
+  if (days <= 2) return "critical";
+  if (days <= 5) return "warning";
   return "ok";
 }
 
-const URGENCY_STYLES = {
+const URGENCY = {
   expired: {
-    badge: "bg-red-100 text-red-700 border-red-200",
-    label: (days) => "Expired",
-    dot: "bg-red-500",
-    ring: "border-red-300",
+    pill: "bg-red-100 text-red-700 border-red-200",
+    dot: "#ef4444",
+    label: () => "Expired",
   },
   critical: {
-    badge: "bg-orange-100 text-orange-700 border-orange-200",
-    label: (days) => (days === 0 ? "Expires today!" : `${days}d left`),
-    dot: "bg-orange-400",
-    ring: "border-orange-300",
+    pill: "bg-amber-100 text-amber-700 border-amber-200",
+    dot: "#f59e0b",
+    label: (d) => (d === 0 ? "Today!" : `${d}d left`),
   },
   warning: {
-    badge: "bg-yellow-100 text-yellow-700 border-yellow-200",
-    label: (days) => `${days}d left`,
-    dot: "bg-yellow-400",
-    ring: "border-yellow-200",
+    pill: "bg-yellow-50 text-yellow-700 border-yellow-200",
+    dot: "#eab308",
+    label: (d) => `${d}d left`,
   },
   ok: {
-    badge: "bg-green-50 text-green-600 border-green-100",
-    label: (days) => `${days}d left`,
-    dot: "bg-green-400",
-    ring: "border-green-100",
+    pill: "bg-emerald-50 text-emerald-700 border-emerald-100",
+    dot: "#10b981",
+    label: (d) => `${d}d left`,
   },
-  none: {
-    badge: "",
-    label: () => "",
-    dot: "bg-gray-300",
-    ring: "",
-  },
+  none: { pill: "", dot: "#9ca3af", label: () => "" },
 };
 
+// ─── Fonts ────────────────────────────────────────────────────────────────────
+
+const FONT_LINK =
+  "https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap";
+
+function injectFont() {
+  if (typeof document === "undefined") return;
+  if (document.querySelector(`link[href="${FONT_LINK}"]`)) return;
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = FONT_LINK;
+  document.head.appendChild(link);
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export default function ClientHome({ user }) {
+  injectFont();
+
   const [input, setInput] = useState("");
   const [expiryInput, setExpiryInput] = useState("");
   const [pantry, setPantry] = useState([]);
@@ -73,65 +83,54 @@ export default function ClientHome({ user }) {
   const [dietaryFilter, setDietaryFilter] = useState("none");
   const [selectedRecipe, setSelectedRecipe] = useState(null);
   const [selectedServings, setSelectedServings] = useState(1);
-  const [urgencyFilter, setUrgencyFilter] = useState("all"); // "all" | "expiring"
+  const [urgencyFilter, setUrgencyFilter] = useState("all");
   const [dismissedAlerts, setDismissedAlerts] = useState([]);
+  const [addFocus, setAddFocus] = useState(false);
 
-  const userKey = useMemo(() => {
-    return user?.uid || user?.email || "guest";
-  }, [user]);
-
-  const storageKey = useMemo(() => {
-    return `pantry-${userKey}`;
-  }, [userKey]);
+  const userKey = useMemo(() => user?.uid || user?.email || "guest", [user]);
+  const storageKey = useMemo(() => `pantry-${userKey}`, [userKey]);
 
   useEffect(() => {
     let cancelled = false;
-
     const loadPantry = async () => {
       if (!userKey) return;
       setPantryLoaded(false);
-
-      const loadLocalPantry = () => {
-        const saved = localStorage.getItem(storageKey);
-        if (!saved) return [];
+      const loadLocal = () => {
         try {
-          return JSON.parse(saved);
+          return JSON.parse(localStorage.getItem(storageKey) || "[]");
         } catch {
           return [];
         }
       };
-
       if (!hasFirebaseConfig() || !db || userKey === "guest") {
         if (!cancelled) {
-          setPantry(loadLocalPantry());
+          setPantry(loadLocal());
           setPantryLoaded(true);
         }
         return;
       }
-
       try {
-        const snapshot = await getDoc(doc(db, "pantries", userKey));
+        const snap = await getDoc(doc(db, "pantries", userKey));
         if (cancelled) return;
-        if (snapshot.exists()) {
-          const data = snapshot.data();
-          // Support both old string[] format and new {name, expiry}[] format
-          const raw = Array.isArray(data.ingredients) ? data.ingredients : [];
+        if (snap.exists()) {
+          const raw = Array.isArray(snap.data().ingredients)
+            ? snap.data().ingredients
+            : [];
           setPantry(
             raw.map((i) =>
               typeof i === "string" ? { name: i, expiry: null } : i,
             ),
           );
         } else {
-          setPantry(loadLocalPantry());
+          setPantry(loadLocal());
         }
-      } catch (error) {
-        console.error("Failed to load pantry from Firestore:", error);
-        if (!cancelled) setPantry(loadLocalPantry());
+      } catch (e) {
+        console.error(e);
+        if (!cancelled) setPantry(loadLocal());
       } finally {
         if (!cancelled) setPantryLoaded(true);
       }
     };
-
     loadPantry();
     return () => {
       cancelled = true;
@@ -146,13 +145,8 @@ export default function ClientHome({ user }) {
       doc(db, "pantries", userKey),
       { ingredients: pantry, updatedAt: serverTimestamp() },
       { merge: true },
-    ).catch((error) =>
-      console.error("Failed to save pantry to Firestore:", error),
-    );
+    ).catch(console.error);
   }, [pantry, pantryLoaded, storageKey, userKey]);
-
-  const recipePool = RECIPE_POOL;
-  const quickAddIngredients = QUICK_ADD_INGREDIENTS;
 
   const addIngredient = () => {
     if (!input.trim()) return;
@@ -163,13 +157,10 @@ export default function ClientHome({ user }) {
     setExpiryInput("");
   };
 
-  const removeIngredient = (name) => {
+  const removeIngredient = (name) =>
     setPantry(pantry.filter((i) => i.name !== name));
-  };
-
   const clearPantry = () => setPantry([]);
 
-  // Pantry names for recipe matching
   const pantryNames = useMemo(() => pantry.map((i) => i.name), [pantry]);
 
   const getMatch = (recipe) => {
@@ -179,300 +170,596 @@ export default function ClientHome({ user }) {
     return Math.round((matches / recipe.ingredients.length) * 100);
   };
 
-  const formatQuantity = (value) => {
-    if (!Number.isFinite(value)) return value;
-    if (Math.abs(value - Math.round(value)) < 0.001) return Math.round(value);
-    return Number(value.toFixed(2));
+  const formatQuantity = (v) => {
+    if (!Number.isFinite(v)) return v;
+    return Math.abs(v - Math.round(v)) < 0.001
+      ? Math.round(v)
+      : Number(v.toFixed(2));
   };
 
-  const getScaledIngredient = (ingredient, recipeServings) => {
-    const scale = selectedServings / (recipeServings || 1);
-    return {
-      ...ingredient,
-      scaledQuantity: formatQuantity(ingredient.quantity * scale),
-    };
-  };
-
-  const getRecipeImageUrl = (recipe) => {
-    const query = encodeURIComponent(`${recipe.name} food`);
-    return `https://source.unsplash.com/900x600/?${query}`;
-  };
-
-  const getRecipeSteps = (recipe) => {
-    if (Array.isArray(recipe.steps) && recipe.steps.length > 0)
-      return recipe.steps;
-    return [
-      `Gather ingredients: ${recipe.ingredients.map((i) => i.name).join(", ")}.`,
-      "Prep and chop ingredients into bite-sized pieces.",
-      "Cook the main components over medium heat until done.",
-      "Season to taste, plate, and serve warm.",
-    ];
-  };
-
-  // Items expiring within 5 days or already expired, not dismissed
-  const urgentItems = useMemo(() => {
-    return pantry.filter((item) => {
-      const urgency = getUrgency(item.expiry);
-      return (
-        (urgency === "expired" ||
-          urgency === "critical" ||
-          urgency === "warning") &&
-        !dismissedAlerts.includes(item.name)
-      );
-    });
-  }, [pantry, dismissedAlerts]);
-
-  const filteredPantry = useMemo(() => {
-    if (urgencyFilter === "expiring") {
-      return pantry.filter((i) => {
-        const u = getUrgency(i.expiry);
-        return u === "expired" || u === "critical" || u === "warning";
-      });
-    }
-    return pantry;
-  }, [pantry, urgencyFilter]);
-
-  const filteredRecipes = recipePool.filter((recipe) => {
-    if (dietaryFilter === "none") return true;
-    return recipe.dietaryTags.includes(dietaryFilter);
+  const getScaledIngredient = (ing, servings) => ({
+    ...ing,
+    scaledQuantity: formatQuantity(
+      ing.quantity * (selectedServings / (servings || 1)),
+    ),
   });
 
-  // If urgency filter active, boost recipes that use expiring items
+  const getRecipeSteps = (recipe) =>
+    Array.isArray(recipe.steps) && recipe.steps.length > 0
+      ? recipe.steps
+      : [
+          `Gather ingredients: ${recipe.ingredients.map((i) => i.name).join(", ")}.`,
+          "Prep and chop ingredients into bite-sized pieces.",
+          "Cook the main components over medium heat until done.",
+          "Season to taste, plate, and serve warm.",
+        ];
+
+  const urgentItems = useMemo(
+    () =>
+      pantry.filter(
+        (i) =>
+          ["expired", "critical", "warning"].includes(getUrgency(i.expiry)) &&
+          !dismissedAlerts.includes(i.name),
+      ),
+    [pantry, dismissedAlerts],
+  );
+
+  const filteredPantry = useMemo(
+    () =>
+      urgencyFilter === "expiring"
+        ? pantry.filter((i) =>
+            ["expired", "critical", "warning"].includes(getUrgency(i.expiry)),
+          )
+        : pantry,
+    [pantry, urgencyFilter],
+  );
+
   const sortedRecipes = useMemo(() => {
-    return [...filteredRecipes].sort((a, b) => {
+    const filtered = RECIPE_POOL.filter(
+      (r) => dietaryFilter === "none" || r.dietaryTags.includes(dietaryFilter),
+    );
+    return [...filtered].sort((a, b) => {
       if (urgencyFilter === "expiring") {
-        const expiringNames = urgentItems.map((i) => i.name);
-        const aUses = a.ingredients.filter((i) =>
-          expiringNames.includes(i.name),
-        ).length;
-        const bUses = b.ingredients.filter((i) =>
-          expiringNames.includes(i.name),
-        ).length;
-        if (bUses !== aUses) return bUses - aUses;
+        const expNames = urgentItems.map((i) => i.name);
+        const diff =
+          b.ingredients.filter((i) => expNames.includes(i.name)).length -
+          a.ingredients.filter((i) => expNames.includes(i.name)).length;
+        if (diff !== 0) return diff;
       }
       return getMatch(b) - getMatch(a);
     });
-  }, [filteredRecipes, urgencyFilter, urgentItems, pantryNames]);
+  }, [dietaryFilter, urgencyFilter, urgentItems, pantryNames]);
+
+  // ─── Inline styles ─────────────────────────────────────────────────────────
+
+  const S = {
+    page: {
+      minHeight: "100vh",
+      background: "#faf8f3",
+      backgroundImage:
+        "radial-gradient(ellipse at 15% 60%, rgba(134,164,118,0.1) 0%, transparent 55%), radial-gradient(ellipse at 85% 15%, rgba(212,165,96,0.09) 0%, transparent 50%)",
+      fontFamily: "'DM Sans', sans-serif",
+      color: "#1c1c1c",
+    },
+    topBar: {
+      borderBottom: "1px solid rgba(0,0,0,0.06)",
+      background: "rgba(250,248,243,0.92)",
+      backdropFilter: "blur(14px)",
+      padding: "0 2rem",
+      height: "54px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      position: "sticky",
+      top: 0,
+      zIndex: 40,
+    },
+    wordmark: {
+      fontFamily: "'DM Serif Display', serif",
+      fontSize: "1.2rem",
+      color: "#2d5a27",
+      letterSpacing: "-0.02em",
+    },
+    logoutBtn: {
+      fontSize: "0.72rem",
+      color: "#9ca3af",
+      background: "none",
+      border: "1px solid #e9e6df",
+      borderRadius: "6px",
+      padding: "4px 12px",
+      cursor: "pointer",
+      fontFamily: "'DM Sans', sans-serif",
+    },
+    hero: {
+      padding: "3.5rem 2rem 1.5rem",
+      maxWidth: "1100px",
+      margin: "0 auto",
+    },
+    heroTitle: {
+      fontFamily: "'DM Serif Display', serif",
+      fontSize: "clamp(2rem, 4.5vw, 3.2rem)",
+      lineHeight: 1.1,
+      color: "#1a2e18",
+      marginBottom: "0.4rem",
+      letterSpacing: "-0.03em",
+    },
+    heroSub: {
+      color: "#9ca3af",
+      fontSize: "0.95rem",
+      fontWeight: 300,
+    },
+    main: {
+      maxWidth: "1100px",
+      margin: "0 auto",
+      padding: "1.25rem 2rem 4rem",
+    },
+    alertBanner: {
+      background: "linear-gradient(135deg, #fffdf0 0%, #fef3c7 100%)",
+      border: "1px solid #fde68a",
+      borderRadius: "14px",
+      padding: "1rem 1.25rem",
+      marginBottom: "1.25rem",
+      display: "flex",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+      gap: "1rem",
+    },
+    addCard: {
+      background: "#fff",
+      border: addFocus ? "1.5px solid #2d5a27" : "1.5px solid #ece9e2",
+      borderRadius: "14px",
+      padding: "1rem 1.25rem",
+      marginBottom: "0.75rem",
+      boxShadow: addFocus
+        ? "0 0 0 3px rgba(45,90,39,0.07)"
+        : "0 1px 3px rgba(0,0,0,0.04)",
+      transition: "all 0.18s",
+      display: "flex",
+      gap: "0.75rem",
+      alignItems: "center",
+    },
+    textInput: {
+      flex: 1,
+      border: "none",
+      outline: "none",
+      fontSize: "0.9rem",
+      fontFamily: "'DM Sans', sans-serif",
+      background: "transparent",
+      color: "#1c1c1c",
+    },
+    dateInput: {
+      border: "1px solid #e9e6df",
+      borderRadius: "8px",
+      padding: "5px 9px",
+      fontSize: "0.775rem",
+      fontFamily: "'DM Sans', sans-serif",
+      color: "#6b7280",
+      background: "#fafaf8",
+      cursor: "pointer",
+    },
+    addBtn: {
+      background: "#2d5a27",
+      color: "#fff",
+      border: "none",
+      borderRadius: "9px",
+      padding: "7px 18px",
+      fontSize: "0.85rem",
+      fontWeight: 500,
+      cursor: "pointer",
+      fontFamily: "'DM Sans', sans-serif",
+      whiteSpace: "nowrap",
+      transition: "background 0.15s",
+    },
+    quickChips: {
+      display: "flex",
+      flexWrap: "wrap",
+      gap: "0.35rem",
+      marginBottom: "1.75rem",
+    },
+    chip: {
+      fontSize: "0.72rem",
+      padding: "4px 11px",
+      borderRadius: "100px",
+      border: "1px solid #e9e6df",
+      background: "#fff",
+      cursor: "pointer",
+      color: "#6b7280",
+      fontFamily: "'DM Sans', sans-serif",
+      transition: "all 0.1s",
+    },
+    grid: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: "1.25rem",
+    },
+    card: {
+      background: "#fff",
+      border: "1px solid #ece9e2",
+      borderRadius: "18px",
+      overflow: "hidden",
+      boxShadow: "0 1px 8px rgba(0,0,0,0.04)",
+    },
+    cardHeader: {
+      padding: "1.25rem 1.25rem 0",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: "0.875rem",
+    },
+    cardTitle: {
+      fontFamily: "'DM Serif Display', serif",
+      fontSize: "1.15rem",
+      color: "#1a2e18",
+    },
+    cardBody: {
+      padding: "0 1.25rem 1.25rem",
+    },
+    sectionLabel: {
+      fontSize: "0.62rem",
+      fontWeight: 600,
+      letterSpacing: "0.1em",
+      textTransform: "uppercase",
+      color: "#c4bfb3",
+      marginBottom: "0.6rem",
+    },
+    pantryRow: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: "0.5rem 0.7rem",
+      borderRadius: "9px",
+      marginBottom: "0.3rem",
+      background: "#fafaf8",
+      border: "1px solid #f0ede6",
+      transition: "background 0.1s",
+    },
+    recipeCard: {
+      padding: "0.875rem 1rem",
+      borderRadius: "11px",
+      border: "1px solid #ece9e2",
+      marginBottom: "0.6rem",
+      cursor: "pointer",
+      transition: "all 0.13s",
+      background: "#fff",
+    },
+    filterSelect: {
+      fontSize: "0.72rem",
+      border: "1px solid #e9e6df",
+      borderRadius: "8px",
+      padding: "4px 8px",
+      background: "#fafaf8",
+      fontFamily: "'DM Sans', sans-serif",
+      color: "#6b7280",
+      cursor: "pointer",
+    },
+    pillBtn: (active) => ({
+      fontSize: "0.68rem",
+      fontWeight: 500,
+      padding: "3px 10px",
+      borderRadius: "100px",
+      border: "1px solid",
+      cursor: "pointer",
+      fontFamily: "'DM Sans', sans-serif",
+      transition: "all 0.12s",
+      background: active ? "#2d5a27" : "#fff",
+      color: active ? "#fff" : "#9ca3af",
+      borderColor: active ? "#2d5a27" : "#e9e6df",
+    }),
+    matchBadge: (pct) => ({
+      fontSize: "0.68rem",
+      fontWeight: 600,
+      padding: "2px 8px",
+      borderRadius: "100px",
+      background: pct >= 80 ? "#dcfce7" : pct >= 50 ? "#fef9c3" : "#f3f4f6",
+      color: pct >= 80 ? "#15803d" : pct >= 50 ? "#a16207" : "#6b7280",
+      flexShrink: 0,
+    }),
+    modalOverlay: {
+      position: "fixed",
+      inset: 0,
+      background: "rgba(12,18,10,0.65)",
+      backdropFilter: "blur(6px)",
+      zIndex: 50,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "1rem",
+    },
+    modal: {
+      background: "#faf8f3",
+      width: "100%",
+      maxWidth: "660px",
+      borderRadius: "22px",
+      overflow: "hidden",
+      maxHeight: "90vh",
+      display: "flex",
+      flexDirection: "column",
+      boxShadow: "0 28px 70px rgba(0,0,0,0.28)",
+    },
+  };
 
   return (
-    <div className="bg-gradient-to-br from-gray-50 to-gray-200 min-h-screen p-8 text-gray-900">
-      <div className="max-w-6xl mx-auto">
-        {/* HEADER */}
-        <div className="flex justify-between items-center mb-10">
-          <h1 className="text-3xl font-bold">🍳 PantryPal</h1>
-          <button
-            onClick={() => firebaseSignOut(auth)}
-            className="text-sm text-gray-500 hover:underline"
-          >
-            Logout
-          </button>
-        </div>
+    <div style={S.page}>
+      {/* TOP BAR */}
+      <nav style={S.topBar}>
+        <span style={S.wordmark}>🌿 PantryPal</span>
+        <button style={S.logoutBtn} onClick={() => firebaseSignOut(auth)}>
+          Sign out
+        </button>
+      </nav>
 
-        {/* HERO */}
-        <div className="mb-8">
-          <h2 className="text-4xl font-bold">
-            Cook smarter with what you have
-          </h2>
-          <p className="text-gray-500 mt-2">
-            Add ingredients and get recipe matches instantly
-          </p>
-        </div>
+      {/* HERO */}
+      <header style={S.hero}>
+        <h1 style={S.heroTitle}>
+          Cook what
+          <br />
+          <em>you already have.</em>
+        </h1>
+        <p style={S.heroSub}>Add your ingredients, discover what to make.</p>
+      </header>
 
-        {/* URGENCY ALERT BANNER */}
+      <main style={S.main}>
+        {/* URGENCY BANNER */}
         {urgentItems.length > 0 && (
-          <div className="mb-6 rounded-2xl border border-orange-200 bg-orange-50 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="font-semibold text-orange-700 text-sm mb-2">
-                  ⚠️ {urgentItems.length} ingredient
-                  {urgentItems.length > 1 ? "s" : ""} need
-                  {urgentItems.length === 1 ? "s" : ""} attention
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {urgentItems.map((item) => {
-                    const urgency = getUrgency(item.expiry);
-                    const days = daysUntilExpiry(item.expiry);
-                    const style = URGENCY_STYLES[urgency];
-                    return (
-                      <span
-                        key={item.name}
-                        className={`text-xs px-2 py-1 rounded-full border font-medium ${style.badge}`}
-                      >
-                        {item.name} — {style.label(days)}
-                      </span>
-                    );
-                  })}
-                </div>
+          <div style={S.alertBanner}>
+            <div style={{ flex: 1 }}>
+              <p
+                style={{
+                  fontSize: "0.78rem",
+                  fontWeight: 600,
+                  color: "#92400e",
+                  marginBottom: "0.5rem",
+                }}
+              >
+                ⚠️ {urgentItems.length} item{urgentItems.length > 1 ? "s" : ""}{" "}
+                expiring soon
+              </p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.3rem" }}>
+                {urgentItems.map((item) => {
+                  const u = getUrgency(item.expiry);
+                  const d = daysUntilExpiry(item.expiry);
+                  return (
+                    <span
+                      key={item.name}
+                      className={`text-xs px-2 py-0.5 rounded-full border font-medium ${URGENCY[u].pill}`}
+                    >
+                      {item.name} · {URGENCY[u].label(d)}
+                    </span>
+                  );
+                })}
               </div>
-              <div className="flex gap-2 shrink-0">
-                <button
-                  onClick={() =>
-                    setUrgencyFilter(
-                      urgencyFilter === "expiring" ? "all" : "expiring",
-                    )
-                  }
-                  className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition ${
-                    urgencyFilter === "expiring"
-                      ? "bg-orange-500 text-white border-orange-500"
-                      : "bg-white text-orange-600 border-orange-300 hover:bg-orange-50"
-                  }`}
-                >
-                  {urgencyFilter === "expiring"
-                    ? "Show all"
-                    : "Prioritize these"}
-                </button>
-                <button
-                  onClick={() =>
-                    setDismissedAlerts(urgentItems.map((i) => i.name))
-                  }
-                  className="text-xs px-3 py-1.5 rounded-lg border bg-white text-gray-500 border-gray-200 hover:bg-gray-50"
-                >
-                  Dismiss
-                </button>
-              </div>
+            </div>
+            <div style={{ display: "flex", gap: "0.4rem", flexShrink: 0 }}>
+              <button
+                style={S.pillBtn(urgencyFilter === "expiring")}
+                onClick={() =>
+                  setUrgencyFilter(
+                    urgencyFilter === "expiring" ? "all" : "expiring",
+                  )
+                }
+              >
+                {urgencyFilter === "expiring" ? "Show all" : "Prioritize"}
+              </button>
+              <button
+                style={{ ...S.pillBtn(false), color: "#9ca3af" }}
+                onClick={() =>
+                  setDismissedAlerts(urgentItems.map((i) => i.name))
+                }
+              >
+                Dismiss
+              </button>
             </div>
           </div>
         )}
 
-        {/* INPUT */}
-        <div className="flex gap-3 mb-4">
+        {/* ADD ROW */}
+        <div style={S.addCard}>
+          <span style={{ fontSize: "1rem", color: "#c4bfb3" }}>＋</span>
           <input
+            style={S.textInput}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addIngredient()}
-            placeholder="Add ingredient (e.g. rice)"
-            className="flex-1 p-3 rounded-xl border shadow-sm"
+            onFocus={() => setAddFocus(true)}
+            onBlur={() => setAddFocus(false)}
+            placeholder="Add an ingredient…"
           />
           <input
             type="date"
+            style={S.dateInput}
             value={expiryInput}
             onChange={(e) => setExpiryInput(e.target.value)}
             title="Expiry date (optional)"
-            className="p-3 rounded-xl border shadow-sm text-sm text-gray-500 w-40"
           />
           <button
+            style={S.addBtn}
             onClick={addIngredient}
-            className="bg-green-500 text-white px-6 rounded-xl shadow hover:bg-green-600 transition"
+            onMouseEnter={(e) => (e.target.style.background = "#234a1e")}
+            onMouseLeave={(e) => (e.target.style.background = "#2d5a27")}
           >
             Add
           </button>
         </div>
 
-        <div className="flex flex-wrap gap-2 mb-8">
-          {quickAddIngredients.map((item) => (
+        {/* QUICK CHIPS */}
+        <div style={S.quickChips}>
+          {QUICK_ADD_INGREDIENTS.map((item) => (
             <button
               key={item}
+              style={S.chip}
               onClick={() => setInput(item)}
-              className="text-xs px-3 py-1 rounded-full border bg-white hover:bg-gray-50"
+              onMouseEnter={(e) => {
+                e.target.style.background = "#f0f4ef";
+                e.target.style.borderColor = "#2d5a27";
+                e.target.style.color = "#2d5a27";
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = "#fff";
+                e.target.style.borderColor = "#e9e6df";
+                e.target.style.color = "#6b7280";
+              }}
             >
               {item}
             </button>
           ))}
         </div>
 
-        {/* GRID */}
-        <div className="grid md:grid-cols-2 gap-8">
+        {/* TWO-COLUMN GRID */}
+        <div style={S.grid}>
           {/* PANTRY */}
-          <div className="bg-white rounded-2xl shadow-md p-6 border">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-semibold">Your Pantry</h3>
-              <div className="flex gap-2">
+          <div style={S.card}>
+            <div style={S.cardHeader}>
+              <h2 style={S.cardTitle}>Pantry</h2>
+              <div style={{ display: "flex", gap: "0.35rem" }}>
                 <button
+                  style={S.pillBtn(urgencyFilter === "expiring")}
                   onClick={() =>
                     setUrgencyFilter(
                       urgencyFilter === "expiring" ? "all" : "expiring",
                     )
                   }
-                  className={`text-xs px-3 py-1 rounded-full border transition ${
-                    urgencyFilter === "expiring"
-                      ? "bg-orange-100 text-orange-600 border-orange-200"
-                      : "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100"
-                  }`}
                 >
-                  {urgencyFilter === "expiring" ? "All items" : "Expiring soon"}
+                  Expiring
                 </button>
                 {pantry.length > 0 && (
-                  <button
-                    onClick={clearPantry}
-                    className="text-xs px-3 py-1 rounded-full border bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100"
-                  >
+                  <button style={S.pillBtn(false)} onClick={clearPantry}>
                     Clear
                   </button>
                 )}
               </div>
             </div>
 
-            {filteredPantry.length === 0 ? (
-              <p className="text-gray-400">
-                {urgencyFilter === "expiring"
-                  ? "No expiring items 🎉"
-                  : "No ingredients yet — add some!"}
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {filteredPantry.map((item, index) => {
-                  const urgency = getUrgency(item.expiry);
-                  const days = daysUntilExpiry(item.expiry);
-                  const style = URGENCY_STYLES[urgency];
-
-                  return (
-                    <div
-                      key={index}
-                      className={`flex items-center justify-between px-3 py-2 rounded-xl border ${
-                        urgency !== "none" ? style.ring : "border-gray-100"
-                      } bg-white hover:bg-gray-50 group transition`}
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span
-                          className={`w-2 h-2 rounded-full shrink-0 ${style.dot}`}
-                        />
-                        <span className="text-sm text-gray-800 truncate">
-                          {item.name}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0 ml-2">
-                        {urgency !== "none" && (
-                          <span
-                            className={`text-xs px-2 py-0.5 rounded-full border font-medium ${style.badge}`}
-                          >
-                            {style.label(days)}
-                          </span>
-                        )}
-                        {item.expiry && urgency === "none" && (
-                          <span className="text-xs text-gray-400">
-                            {style.label(days)}
-                          </span>
-                        )}
-                        <button
-                          onClick={() => removeIngredient(item.name)}
-                          className="text-gray-300 hover:text-red-400 text-sm opacity-0 group-hover:opacity-100 transition"
-                          title="Remove"
+            <div style={S.cardBody}>
+              {filteredPantry.length === 0 ? (
+                <p style={{ color: "#c4bfb3", fontSize: "0.85rem" }}>
+                  {urgencyFilter === "expiring"
+                    ? "Nothing expiring soon 🎉"
+                    : "Your pantry is empty."}
+                </p>
+              ) : (
+                <>
+                  <p style={S.sectionLabel}>
+                    {filteredPantry.length} ingredient
+                    {filteredPantry.length !== 1 ? "s" : ""}
+                  </p>
+                  {filteredPantry.map((item) => {
+                    const u = getUrgency(item.expiry);
+                    const d = daysUntilExpiry(item.expiry);
+                    return (
+                      <div
+                        key={item.name}
+                        style={S.pantryRow}
+                        onMouseEnter={(e) =>
+                          (e.currentTarget.style.background = "#f5f2ec")
+                        }
+                        onMouseLeave={(e) =>
+                          (e.currentTarget.style.background = "#fafaf8")
+                        }
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.55rem",
+                            minWidth: 0,
+                          }}
                         >
-                          ✕
-                        </button>
+                          <span
+                            style={{
+                              width: 6,
+                              height: 6,
+                              borderRadius: "50%",
+                              background: URGENCY[u].dot,
+                              flexShrink: 0,
+                            }}
+                          />
+                          <span
+                            style={{
+                              fontSize: "0.85rem",
+                              color: "#374151",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {item.name}
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.4rem",
+                            flexShrink: 0,
+                            marginLeft: "0.5rem",
+                          }}
+                        >
+                          {u !== "none" && (
+                            <span
+                              className={`text-xs px-1.5 py-0.5 rounded-full border font-medium ${URGENCY[u].pill}`}
+                            >
+                              {URGENCY[u].label(d)}
+                            </span>
+                          )}
+                          {u === "none" && item.expiry && (
+                            <span
+                              style={{ fontSize: "0.68rem", color: "#c4bfb3" }}
+                            >
+                              {d}d
+                            </span>
+                          )}
+                          <button
+                            onClick={() => removeIngredient(item.name)}
+                            style={{
+                              fontSize: "0.65rem",
+                              color: "#d1d5db",
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              padding: "2px",
+                              lineHeight: 1,
+                            }}
+                            onMouseEnter={(e) =>
+                              (e.target.style.color = "#ef4444")
+                            }
+                            onMouseLeave={(e) =>
+                              (e.target.style.color = "#d1d5db")
+                            }
+                          >
+                            ✕
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </>
+              )}
+            </div>
           </div>
 
           {/* RECIPES */}
-          <div className="bg-white rounded-2xl shadow-md p-6 border">
-            <div className="flex items-center justify-between mb-4 gap-3">
-              <h3 className="text-xl font-semibold">
-                Recommended Recipes
+          <div style={S.card}>
+            <div style={S.cardHeader}>
+              <h2 style={S.cardTitle}>
+                Recipes
                 {urgencyFilter === "expiring" && (
-                  <span className="ml-2 text-xs font-normal text-orange-500">
-                    · sorted by expiring items
+                  <span
+                    style={{
+                      fontSize: "0.68rem",
+                      fontFamily: "'DM Sans', sans-serif",
+                      color: "#d97706",
+                      marginLeft: "0.4rem",
+                      fontWeight: 400,
+                    }}
+                  >
+                    · using expiring first
                   </span>
                 )}
-              </h3>
+              </h2>
               <select
+                style={S.filterSelect}
                 value={dietaryFilter}
                 onChange={(e) => setDietaryFilter(e.target.value)}
-                className="text-sm border rounded-lg px-2 py-1"
               >
                 <option value="none">All diets</option>
                 <option value="vegetarian">Vegetarian</option>
@@ -482,211 +769,369 @@ export default function ClientHome({ user }) {
               </select>
             </div>
 
-            <div className="recipes-scroll max-h-96 overflow-y-scroll space-y-4 pr-2 md:max-h-[32rem]">
-              {sortedRecipes.map((recipe, index) => {
-                const match = getMatch(recipe);
-                const missing = recipe.ingredients.filter(
-                  (i) => !pantryNames.includes(i.name),
-                );
-                const usesExpiringItems = urgentItems.filter((u) =>
-                  recipe.ingredients.some((i) => i.name === u.name),
-                );
+            <div
+              style={{ ...S.cardBody, overflowY: "auto", maxHeight: "460px" }}
+              className="recipes-scroll"
+            >
+              {sortedRecipes.length === 0 ? (
+                <p style={{ color: "#c4bfb3", fontSize: "0.85rem" }}>
+                  No recipes match that filter.
+                </p>
+              ) : (
+                sortedRecipes.map((recipe, i) => {
+                  const match = getMatch(recipe);
+                  const missing = recipe.ingredients.filter(
+                    (ing) => !pantryNames.includes(ing.name),
+                  );
+                  const usesExpiring = urgentItems.filter((u) =>
+                    recipe.ingredients.some((ing) => ing.name === u.name),
+                  );
+                  return (
+                    <div
+                      key={i}
+                      style={S.recipeCard}
+                      onClick={() => {
+                        setSelectedRecipe(recipe);
+                        setSelectedServings(recipe.servings || 1);
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.boxShadow =
+                          "0 3px 16px rgba(0,0,0,0.07)";
+                        e.currentTarget.style.borderColor = "#d4d0c8";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.boxShadow = "none";
+                        e.currentTarget.style.borderColor = "#ece9e2";
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "flex-start",
+                          marginBottom: "0.3rem",
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontWeight: 500,
+                            fontSize: "0.875rem",
+                            color: "#1a2e18",
+                          }}
+                        >
+                          {recipe.name}
+                        </span>
+                        <span style={S.matchBadge(match)}>{match}%</span>
+                      </div>
 
-                return (
-                  <div
-                    key={index}
-                    className="p-4 rounded-xl border hover:shadow-lg transition cursor-pointer"
-                    onClick={() => {
-                      setSelectedRecipe(recipe);
-                      setSelectedServings(recipe.servings || 1);
-                    }}
-                  >
-                    <div className="flex justify-between items-start">
-                      <h4 className="font-medium">{recipe.name}</h4>
-                      <span className="text-green-600 text-sm font-semibold shrink-0 ml-2">
-                        {match}% match
-                      </span>
-                    </div>
-
-                    {usesExpiringItems.length > 0 && (
-                      <div className="mt-1.5 flex flex-wrap gap-1">
-                        {usesExpiringItems.map((u) => {
-                          const urgency = getUrgency(u.expiry);
-                          const style = URGENCY_STYLES[urgency];
-                          return (
+                      {usesExpiring.length > 0 && (
+                        <div
+                          style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            gap: "0.2rem",
+                            marginBottom: "0.3rem",
+                          }}
+                        >
+                          {usesExpiring.map((u) => (
                             <span
                               key={u.name}
-                              className={`text-xs px-2 py-0.5 rounded-full border ${style.badge}`}
+                              className={`text-xs px-1.5 py-0.5 rounded-full border ${URGENCY[getUrgency(u.expiry)].pill}`}
                             >
-                              Uses {u.name} (
-                              {style.label(daysUntilExpiry(u.expiry))})
+                              uses {u.name}
                             </span>
-                          );
-                        })}
+                          ))}
+                        </div>
+                      )}
+
+                      <div
+                        style={{
+                          fontSize: "0.75rem",
+                          color: "#9ca3af",
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        {recipe.dietaryTags.length > 0 && (
+                          <span
+                            style={{ color: "#818cf8", marginRight: "0.4rem" }}
+                          >
+                            {recipe.dietaryTags.join(" · ")}
+                          </span>
+                        )}
+                        {missing.length === 0 ? (
+                          <span style={{ color: "#16a34a", fontWeight: 500 }}>
+                            Ready to cook 🎉
+                          </span>
+                        ) : (
+                          <span>
+                            Missing:{" "}
+                            <span style={{ color: "#f87171" }}>
+                              {missing.map((i) => i.name).join(", ")}
+                            </span>
+                          </span>
+                        )}
                       </div>
-                    )}
-
-                    <div className="mt-2 text-sm space-y-1">
-                      {recipe.dietaryTags.length > 0 && (
-                        <p>
-                          Diet:{" "}
-                          <span className="text-indigo-600">
-                            {recipe.dietaryTags.join(", ")}
-                          </span>
-                        </p>
-                      )}
-                      <p>
-                        Ingredients:{" "}
-                        <span className="text-gray-600">
-                          {recipe.ingredients.map((i) => i.name).join(", ")}
-                        </span>
-                      </p>
-                      {missing.length > 0 ? (
-                        <p>
-                          Missing:{" "}
-                          <span className="text-red-400">
-                            {missing.map((i) => i.name).join(", ")}
-                          </span>
-                        </p>
-                      ) : (
-                        <p className="text-green-500 font-medium">
-                          Ready to cook 🎉
-                        </p>
-                      )}
-                      <p className="text-xs text-gray-400 pt-1">
-                        Click to view full recipe
-                      </p>
                     </div>
-                  </div>
-                );
-              })}
-
-              {sortedRecipes.length === 0 && (
-                <div className="p-4 rounded-xl border bg-gray-50 text-sm text-gray-500">
-                  No recipes match that dietary filter yet.
-                </div>
+                  );
+                })
               )}
             </div>
           </div>
         </div>
-      </div>
+      </main>
 
-      {/* RECIPE MODAL */}
+      {/* MODAL */}
       {selectedRecipe && (
-        <div
-          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-          onClick={() => setSelectedRecipe(null)}
-        >
-          <div
-            className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border overflow-hidden max-h-[90vh] flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <img
-              src={getRecipeImageUrl(selectedRecipe)}
-              alt={selectedRecipe.name}
-              className="w-full h-56 object-cover"
-            />
-            <div className="p-6 overflow-y-auto">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-2xl font-bold">{selectedRecipe.name}</h3>
-                  {selectedRecipe.dietaryTags.length > 0 && (
-                    <p className="text-sm text-indigo-600 mt-1">
-                      {selectedRecipe.dietaryTags.join(" • ")}
-                    </p>
-                  )}
-                </div>
-                <button
-                  onClick={() => setSelectedRecipe(null)}
-                  className="text-sm px-3 py-1 rounded-lg border hover:bg-gray-50"
+        <div style={S.modalOverlay} onClick={() => setSelectedRecipe(null)}>
+          <div style={S.modal} onClick={(e) => e.stopPropagation()}>
+            {/* Modal image header */}
+            <div
+              style={{
+                position: "relative",
+                height: "190px",
+                flexShrink: 0,
+                overflow: "hidden",
+              }}
+            >
+              <img
+                src={`https://source.unsplash.com/900x600/?${encodeURIComponent(selectedRecipe.name + " food")}`}
+                alt={selectedRecipe.name}
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              />
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  background:
+                    "linear-gradient(to top, rgba(20,35,18,0.75) 0%, transparent 55%)",
+                }}
+              />
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: "1rem",
+                  left: "1.5rem",
+                  right: "4.5rem",
+                }}
+              >
+                <h2
+                  style={{
+                    fontFamily: "'DM Serif Display', serif",
+                    fontSize: "1.5rem",
+                    color: "#fff",
+                    lineHeight: 1.1,
+                    margin: 0,
+                  }}
                 >
-                  Close
-                </button>
+                  {selectedRecipe.name}
+                </h2>
+                {selectedRecipe.dietaryTags.length > 0 && (
+                  <p
+                    style={{
+                      fontSize: "0.72rem",
+                      color: "rgba(255,255,255,0.7)",
+                      marginTop: "0.2rem",
+                    }}
+                  >
+                    {selectedRecipe.dietaryTags.join(" · ")}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => setSelectedRecipe(null)}
+                style={{
+                  position: "absolute",
+                  top: "0.875rem",
+                  right: "0.875rem",
+                  background: "rgba(255,255,255,0.18)",
+                  backdropFilter: "blur(8px)",
+                  border: "1px solid rgba(255,255,255,0.28)",
+                  color: "#fff",
+                  borderRadius: "7px",
+                  padding: "3px 11px",
+                  fontSize: "0.72rem",
+                  cursor: "pointer",
+                  fontFamily: "'DM Sans', sans-serif",
+                }}
+              >
+                Close
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <div
+              style={{
+                padding: "1.5rem",
+                overflowY: "auto",
+                flex: 1,
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "1.75rem",
+              }}
+            >
+              {/* Ingredients */}
+              <div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: "0.6rem",
+                  }}
+                >
+                  <h3
+                    style={{
+                      fontFamily: "'DM Serif Display', serif",
+                      fontSize: "1rem",
+                      color: "#1a2e18",
+                      margin: 0,
+                    }}
+                  >
+                    Ingredients
+                  </h3>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.35rem",
+                      fontSize: "0.72rem",
+                      color: "#9ca3af",
+                    }}
+                  >
+                    Servings
+                    <input
+                      type="number"
+                      min={1}
+                      value={selectedServings}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        setSelectedServings(isNaN(n) ? 1 : Math.max(1, n));
+                      }}
+                      style={{
+                        width: "44px",
+                        padding: "2px 5px",
+                        border: "1px solid #e9e6df",
+                        borderRadius: "6px",
+                        fontSize: "0.78rem",
+                        fontFamily: "'DM Sans', sans-serif",
+                      }}
+                    />
+                  </label>
+                </div>
+                <p
+                  style={{
+                    fontSize: "0.68rem",
+                    color: "#c4bfb3",
+                    marginBottom: "0.6rem",
+                  }}
+                >
+                  Base: {selectedRecipe.servings} serving(s)
+                </p>
+                <ul
+                  style={{
+                    listStyle: "none",
+                    padding: 0,
+                    margin: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.35rem",
+                  }}
+                >
+                  {selectedRecipe.ingredients.map((ing) => {
+                    const has = pantryNames.includes(ing.name);
+                    const scaled = getScaledIngredient(
+                      ing,
+                      selectedRecipe.servings,
+                    );
+                    const pantryItem = pantry.find((p) => p.name === ing.name);
+                    const u = pantryItem
+                      ? getUrgency(pantryItem.expiry)
+                      : "none";
+                    const d = pantryItem
+                      ? daysUntilExpiry(pantryItem.expiry)
+                      : null;
+                    return (
+                      <li
+                        key={ing.name}
+                        style={{
+                          padding: "0.45rem 0.7rem",
+                          borderRadius: "8px",
+                          fontSize: "0.8rem",
+                          background: has ? "#f0fdf4" : "#fff5f5",
+                          border: `1px solid ${has ? "#bbf7d0" : "#fecaca"}`,
+                          color: has ? "#166534" : "#b91c1c",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: "0.4rem",
+                        }}
+                      >
+                        <span>
+                          {has ? "✓" : "·"} {scaled.scaledQuantity}{" "}
+                          {scaled.unit} {scaled.name}
+                        </span>
+                        {has && u !== "none" && (
+                          <span
+                            className={`text-xs px-1.5 py-0.5 rounded-full border ${URGENCY[u].pill}`}
+                            style={{ flexShrink: 0 }}
+                          >
+                            {URGENCY[u].label(d)}
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
 
-              <div className="mt-6 grid md:grid-cols-2 gap-6">
-                <div>
-                  <div className="flex items-center justify-between gap-3 mb-2">
-                    <h4 className="font-semibold">Ingredients</h4>
-                    <label className="text-xs text-gray-500 flex items-center gap-2">
-                      Servings
-                      <input
-                        type="number"
-                        min={1}
-                        value={selectedServings}
-                        onChange={(e) => {
-                          const nextValue = Number(e.target.value);
-                          setSelectedServings(
-                            Number.isNaN(nextValue)
-                              ? 1
-                              : Math.max(1, nextValue),
-                          );
+              {/* Steps */}
+              <div>
+                <h3
+                  style={{
+                    fontFamily: "'DM Serif Display', serif",
+                    fontSize: "1rem",
+                    color: "#1a2e18",
+                    marginBottom: "0.6rem",
+                  }}
+                >
+                  Method
+                </h3>
+                <ol
+                  style={{
+                    listStyle: "none",
+                    padding: 0,
+                    margin: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.7rem",
+                  }}
+                >
+                  {getRecipeSteps(selectedRecipe).map((step, i) => (
+                    <li
+                      key={i}
+                      style={{
+                        display: "flex",
+                        gap: "0.6rem",
+                        fontSize: "0.8rem",
+                        color: "#4b5563",
+                        lineHeight: 1.55,
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontFamily: "'DM Serif Display', serif",
+                          color: "#2d5a27",
+                          fontSize: "0.95rem",
+                          lineHeight: 1.2,
+                          flexShrink: 0,
                         }}
-                        className="w-16 px-2 py-1 border rounded-md text-sm"
-                      />
-                    </label>
-                  </div>
-                  <p className="text-xs text-gray-500 mb-3">
-                    Base recipe: {selectedRecipe.servings} serving(s)
-                  </p>
-                  <ul className="space-y-2 text-sm text-gray-700">
-                    {selectedRecipe.ingredients.map((ingredient) => {
-                      const hasIngredient = pantryNames.includes(
-                        ingredient.name,
-                      );
-                      const scaled = getScaledIngredient(
-                        ingredient,
-                        selectedRecipe.servings,
-                      );
-                      const pantryItem = pantry.find(
-                        (p) => p.name === ingredient.name,
-                      );
-                      const urgency = pantryItem
-                        ? getUrgency(pantryItem.expiry)
-                        : "none";
-                      const days = pantryItem
-                        ? daysUntilExpiry(pantryItem.expiry)
-                        : null;
-                      const style = URGENCY_STYLES[urgency];
-
-                      return (
-                        <li
-                          key={ingredient.name}
-                          className={`px-3 py-2 rounded-lg border ${
-                            hasIngredient
-                              ? "bg-green-50 border-green-200 text-green-800"
-                              : "bg-red-50 border-red-200 text-red-700"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span>
-                              {hasIngredient ? "✓" : "•"}{" "}
-                              {scaled.scaledQuantity} {scaled.unit}{" "}
-                              {scaled.name}
-                            </span>
-                            {hasIngredient && urgency !== "none" && (
-                              <span
-                                className={`text-xs px-1.5 py-0.5 rounded-full border shrink-0 ${style.badge}`}
-                              >
-                                {style.label(days)}
-                              </span>
-                            )}
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-                <div>
-                  <h4 className="font-semibold mb-2">Steps</h4>
-                  <ol className="space-y-3 text-sm text-gray-700 list-decimal list-inside">
-                    {getRecipeSteps(selectedRecipe).map((step, index) => (
-                      <li key={index} className="leading-relaxed">
-                        {step}
-                      </li>
-                    ))}
-                  </ol>
-                </div>
+                      >
+                        {i + 1}.
+                      </span>
+                      {step}
+                    </li>
+                  ))}
+                </ol>
               </div>
             </div>
           </div>
