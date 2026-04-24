@@ -53,7 +53,7 @@ export default function BarcodeScanner({ onScan, onClose }) {
       // Use Tesseract/OCR-like approach: read the video frame
       // For production, use quagga2 library: https://github.com/christam/quagga2
       // Install: npm install @ericblade/quagga2
-      
+
       const canvas = document.createElement("canvas");
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
@@ -68,7 +68,7 @@ export default function BarcodeScanner({ onScan, onClose }) {
       if (barcode && !scannedCodes.has(barcode)) {
         // First check local database
         let ingredient = BARCODE_DATABASE[barcode];
-        
+
         // If not in local DB, try Open Food Facts API
         if (!ingredient) {
           ingredient = await fetchBarcodeFromAPI(barcode);
@@ -181,7 +181,13 @@ export default function BarcodeScanner({ onScan, onClose }) {
           {status}
         </p>
         {lastScanned && (
-          <p style={{ fontSize: "0.85rem", color: "#10b981", marginTop: "0.5rem" }}>
+          <p
+            style={{
+              fontSize: "0.85rem",
+              color: "#10b981",
+              marginTop: "0.5rem",
+            }}
+          >
             {lastScanned.name} added
           </p>
         )}
@@ -250,7 +256,8 @@ export default function BarcodeScanner({ onScan, onClose }) {
           maxWidth: "400px",
         }}
       >
-        💡 Tip: For better accuracy, install quagga2 library and use real barcode detection
+        💡 Tip: For better accuracy, install quagga2 library and use real
+        barcode detection
       </p>
     </div>
   );
