@@ -1,6 +1,7 @@
 export const RECIPE_POOL = [
   {
     name: "Chicken Alfredo",
+    image: "https://www.allrecipes.com/thmb/ziUOvj4f_me5yvZhYCUy0n4IKbQ=/1500x0/filters:no_upscale():max_bytes(150000):strip_icc()/276725-creamy-chicken-alfredo-VAT-001-Beauty-4x3-c4b026db5cb349f4b8fd627c56f91a42.jpg",
     servings: 4,
     ingredients: [
       { name: "chicken", quantity: 1, unit: "lb" },
@@ -19,6 +20,7 @@ export const RECIPE_POOL = [
   },
   {
     name: "Omelette",
+    image: "https://joyfoodsunshine.com/wp-content/uploads/2022/07/best-omelette-recipe-1-500x500.jpg",
     servings: 2,
     ingredients: [
       { name: "eggs", quantity: 4, unit: "large" },
@@ -37,6 +39,7 @@ export const RECIPE_POOL = [
   },
   {
     name: "Pasta Primavera",
+    image: "https://cravinghomecooked.com/wp-content/uploads/2024/07/summer-pasta-primavera-1-14.jpg",
     servings: 4,
     ingredients: [
       { name: "pasta", quantity: 12, unit: "oz" },
@@ -55,6 +58,7 @@ export const RECIPE_POOL = [
   },
   {
     name: "Caprese Salad",
+    image: "https://wellnessmama.com/wp-content/uploads/Caprese_Salad_Recipe_9.jpg",
     servings: 2,
     ingredients: [
       { name: "tomato", quantity: 2, unit: "whole" },
@@ -72,6 +76,7 @@ export const RECIPE_POOL = [
   },
   {
     name: "Fried Rice",
+    image: "https://therecipecritic.com/wp-content/uploads/2019/08/easy-fried-rice-4.jpg",
     servings: 4,
     ingredients: [
       { name: "rice", quantity: 4, unit: "cups cooked" },
@@ -90,6 +95,7 @@ export const RECIPE_POOL = [
   },
   {
     name: "Grilled Cheese",
+    image: "https://www.sargento.com/assets/Uploads/Recipe/Image/Louie_Grilled_Cheese-v3__FocusFillWyIwLjAwIiwiMC4wMCIsODAwLDQ3OF0_CompressedW10.jpg",
     servings: 1,
     ingredients: [
       { name: "bread", quantity: 2, unit: "slices" },
@@ -106,6 +112,7 @@ export const RECIPE_POOL = [
   },
   {
     name: "Tacos",
+    image: "https://loveandgoodstuff.com/wp-content/uploads/2020/08/classic-ground-beef-tacos-1200x1200.jpg",
     servings: 4,
     ingredients: [
       { name: "tortilla", quantity: 8, unit: "small" },
@@ -124,6 +131,7 @@ export const RECIPE_POOL = [
   },
   {
     name: "Pancakes",
+    image: "https://www.tasteofhome.com/wp-content/uploads/2024/09/Buttermilk-Pancakes-TOHVP24_33639_MF_08_15_1.jpg",
     servings: 4,
     ingredients: [
       { name: "flour", quantity: 1.5, unit: "cups" },
@@ -142,6 +150,7 @@ export const RECIPE_POOL = [
   },
   {
     name: "BLT Sandwich",
+    image: "https://www.budgetbytes.com/wp-content/uploads/2025/08/Classic-BLT-Front-Wide-Shot.jpg",
     servings: 2,
     ingredients: [
       { name: "bread", quantity: 4, unit: "slices" },
@@ -160,6 +169,7 @@ export const RECIPE_POOL = [
   },
   {
     name: "Veggie Stir Fry",
+    image: "https://ohsweetbasil.com/wp-content/uploads/the-best-easy-stir-fry-vegetables-recipe-6.jpg",
     servings: 4,
     ingredients: [
       { name: "broccoli", quantity: 2, unit: "cups" },
@@ -178,6 +188,7 @@ export const RECIPE_POOL = [
   },
   {
     name: "Chickpea Curry",
+    image: "https://eatwithclarity.com/wp-content/uploads/2024/12/vegan-thai-chickpea-curry.jpg",
     servings: 4,
     ingredients: [
       { name: "chickpeas", quantity: 2, unit: "cans" },
@@ -196,6 +207,7 @@ export const RECIPE_POOL = [
   },
   {
     name: "Quinoa Bowl",
+    image: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR-ubldkf5bhrFXb0MpA7NZkqiKwU-_MJd6rg&s",
     servings: 4,
     ingredients: [
       { name: "quinoa", quantity: 1.5, unit: "cups dry" },
@@ -214,6 +226,7 @@ export const RECIPE_POOL = [
   },
   {
     name: "Salmon and Veggies",
+    image: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRy2cjwhBfqPg9iyJRk83GKenbppZ48lTupdw&s",
     servings: 2,
     ingredients: [
       { name: "salmon", quantity: 1, unit: "lb" },
@@ -232,6 +245,7 @@ export const RECIPE_POOL = [
   },
   {
     name: "Turkey Lettuce Wraps",
+    image: "https://www.momables.com/wp-content/uploads/2024/10/Turkey-avocado-lettuce-wrap_RC-SQ.jpg",
     servings: 4,
     ingredients: [
       { name: "ground turkey", quantity: 1, unit: "lb" },
@@ -250,6 +264,7 @@ export const RECIPE_POOL = [
   },
   {
     name: "Greek Yogurt Parfait",
+    image: "https://foolproofliving.com/wp-content/uploads/2017/12/Greek-Yogurt-Parfait-Recipe.jpg",
     servings: 2,
     ingredients: [
       { name: "greek yogurt", quantity: 2, unit: "cups" },
@@ -267,6 +282,7 @@ export const RECIPE_POOL = [
   },
   {
     name: "Tofu Scramble",
+    image: "https://www.noracooks.com/wp-content/uploads/2025/01/tofu-scramble-1-2.jpg",
     servings: 3,
     ingredients: [
       { name: "tofu", quantity: 14, unit: "oz" },
@@ -285,6 +301,7 @@ export const RECIPE_POOL = [
   },
   {
     name: "Lentil Soup",
+    image: "https://thegreekfoodie.com/wp-content/uploads/2021/01/Greek_lentil_soup_SQ.jpg",
     servings: 6,
     ingredients: [
       { name: "lentils", quantity: 1.5, unit: "cups dry" },
@@ -303,6 +320,7 @@ export const RECIPE_POOL = [
   },
   {
     name: "Shrimp Tacos",
+    image: "https://therecipecritic.com/wp-content/uploads/2022/12/shrimp_tacos-1.jpg",
     servings: 4,
     ingredients: [
       { name: "shrimp", quantity: 1, unit: "lb" },
@@ -321,6 +339,7 @@ export const RECIPE_POOL = [
   },
   {
     name: "Veggie Burrito Bowl",
+    image: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRJs5v10f-M7y45JHNHBdyGEo1xJKJ9vncHQg&s",
     servings: 4,
     ingredients: [
       { name: "rice", quantity: 3, unit: "cups cooked" },
@@ -339,6 +358,7 @@ export const RECIPE_POOL = [
   },
   {
     name: "Egg Fried Quinoa",
+    image: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRwC0lhtPcV_Y_HxrRTNu7TJh0vdKDmdAp-lQ&s",
     servings: 4,
     ingredients: [
       { name: "quinoa", quantity: 3, unit: "cups cooked" },
@@ -357,6 +377,7 @@ export const RECIPE_POOL = [
   },
   {
     name: "Baked Potato Bar",
+    image: "https://ainttooproudtomeg.com/wp-content/uploads/2025/04/ATPTM-Blog-April-258194.jpg",
     servings: 4,
     ingredients: [
       { name: "potato", quantity: 4, unit: "whole" },
@@ -375,6 +396,7 @@ export const RECIPE_POOL = [
   },
   {
     name: "Peanut Noodles",
+    image: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT6txzIpmQCvUsX2F3GrcQFia7JNydrcSbdiQ&s",
     servings: 4,
     ingredients: [
       { name: "noodles", quantity: 12, unit: "oz" },
@@ -393,6 +415,7 @@ export const RECIPE_POOL = [
   },
   {
     name: "Chicken Fajita Bowl",
+    image: "https://www.halfbakedharvest.com/wp-content/uploads/2022/06/Chicken-Fajita-Tortilla-Bowls-1.jpg",
     servings: 4,
     ingredients: [
       { name: "chicken", quantity: 1, unit: "lb" },
@@ -411,6 +434,7 @@ export const RECIPE_POOL = [
   },
   {
     name: "Tomato Basil Soup",
+    image: "https://cdn.loveandlemons.com/wp-content/uploads/2020/09/tomato-basil-soup.jpg",
     servings: 4,
     ingredients: [
       { name: "tomato", quantity: 6, unit: "whole" },

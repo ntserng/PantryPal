@@ -92,6 +92,7 @@ export default function ClientHome({ user }) {
   const [editingName, setEditingName] = useState("");
   const [editingExpiry, setEditingExpiry] = useState("");
   const [shoppingList, setShoppingList] = useState([]);
+  const [shoppingFeedback, setShoppingFeedback] = useState(null);
 
   const userKey = useMemo(() => user?.uid || user?.email || "guest", [user]);
   const storageKey = useMemo(() => `pantry-${userKey}`, [userKey]);
@@ -170,6 +171,10 @@ export default function ClientHome({ user }) {
     localStorage.setItem(shoppingStorageKey, JSON.stringify(shoppingList));
   }, [shoppingList, shoppingStorageKey, userKey]);
 
+  useEffect(() => {
+    setShoppingFeedback(null);
+  }, [selectedRecipe?.name]);
+
   const addIngredient = () => {
     if (!input.trim()) return;
     const name = input.toLowerCase().trim();
@@ -215,11 +220,25 @@ export default function ClientHome({ user }) {
     const missing = getMissingIngredients(recipe).map((ing) =>
       getScaledIngredient(ing, recipe.servings),
     );
-    if (missing.length === 0) return;
+    if (missing.length === 0) {
+      return {
+        type: "info",
+        message: "You already have everything for this recipe.",
+      };
+    }
     const existingNames = new Set(shoppingList.map((item) => item.name));
     const next = missing.filter((item) => !existingNames.has(item.name));
-    if (next.length === 0) return;
+    if (next.length === 0) {
+      return {
+        type: "info",
+        message: "All missing items are already in your shopping list.",
+      };
+    }
     setShoppingList([...shoppingList, ...next]);
+    return {
+      type: "success",
+      message: `Added ${next.length} missing item${next.length > 1 ? "s" : ""}.`,
+    };
   };
 
   const removeShoppingItem = (name) =>
@@ -233,7 +252,9 @@ export default function ClientHome({ user }) {
 
     // Calculate expiry date from days offset
     const today = new Date();
-    const expiryDate = new Date(today.getTime() + ingredient.expiry * 24 * 60 * 60 * 1000);
+    const expiryDate = new Date(
+      today.getTime() + ingredient.expiry * 24 * 60 * 60 * 1000,
+    );
     const expiryStr = expiryDate.toISOString().split("T")[0];
 
     setPantry([...pantry, { name, expiry: expiryStr }]);
@@ -270,11 +291,11 @@ export default function ClientHome({ user }) {
     Array.isArray(recipe.steps) && recipe.steps.length > 0
       ? recipe.steps
       : [
-          `Gather ingredients: ${recipe.ingredients.map((i) => i.name).join(", ")}.`,
-          "Prep and chop ingredients into bite-sized pieces.",
-          "Cook the main components over medium heat until done.",
-          "Season to taste, plate, and serve warm.",
-        ];
+        `Gather ingredients: ${recipe.ingredients.map((i) => i.name).join(", ")}.`,
+        "Prep and chop ingredients into bite-sized pieces.",
+        "Cook the main components over medium heat until done.",
+        "Season to taste, plate, and serve warm.",
+      ];
 
   const urgentItems = useMemo(
     () =>
@@ -290,8 +311,8 @@ export default function ClientHome({ user }) {
     () =>
       urgencyFilter === "expiring"
         ? pantry.filter((i) =>
-            ["expired", "critical", "warning"].includes(getUrgency(i.expiry)),
-          )
+          ["expired", "critical", "warning"].includes(getUrgency(i.expiry)),
+        )
         : pantry,
     [pantry, urgencyFilter],
   );
@@ -557,6 +578,26 @@ export default function ClientHome({ user }) {
       display: "flex",
       flexDirection: "column",
       boxShadow: "0 28px 70px rgba(0,0,0,0.28)",
+    },
+    feedbackOverlay: {
+      position: "fixed",
+      inset: 0,
+      background: "rgba(12,18,10,0.55)",
+      backdropFilter: "blur(4px)",
+      zIndex: 60,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "1rem",
+    },
+    feedbackCard: {
+      width: "100%",
+      maxWidth: "360px",
+      borderRadius: "16px",
+      background: "#fff",
+      border: "1px solid #ece9e2",
+      boxShadow: "0 18px 45px rgba(0,0,0,0.2)",
+      padding: "1rem",
     },
   };
 
@@ -1160,7 +1201,12 @@ export default function ClientHome({ user }) {
               }}
             >
               <img
-                src={`https://source.unsplash.com/900x600/?${encodeURIComponent(selectedRecipe.name + " food")}`}
+                src={
+                  selectedRecipe.image ||
+                  `https://source.unsplash.com/900x600/?${encodeURIComponent(
+                    selectedRecipe.name + " food",
+                  )}`
+                }
                 alt={selectedRecipe.name}
                 style={{ width: "100%", height: "100%", objectFit: "cover" }}
               />
@@ -1268,7 +1314,10 @@ export default function ClientHome({ user }) {
                     </p>
                   </div>
                   <button
-                    onClick={() => addMissingToShoppingList(selectedRecipe)}
+                    onClick={() => {
+                      const result = addMissingToShoppingList(selectedRecipe);
+                      if (result) setShoppingFeedback(result);
+                    }}
                     style={{
                       fontSize: "0.75rem",
                       color: "#fff",
@@ -1435,6 +1484,52 @@ export default function ClientHome({ user }) {
                 </ol>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* SHOPPING FEEDBACK OVERLAY */}
+      {shoppingFeedback && (
+        <div style={S.feedbackOverlay} onClick={() => setShoppingFeedback(null)}>
+          <div style={S.feedbackCard} onClick={(e) => e.stopPropagation()}>
+            <p
+              style={{
+                margin: 0,
+                fontSize: "0.75rem",
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+                fontWeight: 600,
+                color: shoppingFeedback.type === "success" ? "#166534" : "#6b7280",
+              }}
+            >
+              {shoppingFeedback.type === "success" ? "Added" : "Notice"}
+            </p>
+            <p
+              style={{
+                margin: "0.45rem 0 0.9rem",
+                fontSize: "0.9rem",
+                color: "#1f2937",
+                lineHeight: 1.45,
+              }}
+            >
+              {shoppingFeedback.message}
+            </p>
+            <button
+              onClick={() => setShoppingFeedback(null)}
+              style={{
+                fontSize: "0.78rem",
+                color: "#fff",
+                background:
+                  shoppingFeedback.type === "success" ? "#2d5a27" : "#7c6b5f",
+                border: "none",
+                borderRadius: "9px",
+                padding: "8px 14px",
+                cursor: "pointer",
+                fontFamily: "'DM Sans', sans-serif",
+              }}
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
