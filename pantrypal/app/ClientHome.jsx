@@ -91,9 +91,11 @@ export default function ClientHome({ user }) {
   const [editingItem, setEditingItem] = useState(null);
   const [editingName, setEditingName] = useState("");
   const [editingExpiry, setEditingExpiry] = useState("");
+  const [shoppingList, setShoppingList] = useState([]);
 
   const userKey = useMemo(() => user?.uid || user?.email || "guest", [user]);
   const storageKey = useMemo(() => `pantry-${userKey}`, [userKey]);
+  const shoppingStorageKey = useMemo(() => `shopping-${userKey}`, [userKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -153,6 +155,21 @@ export default function ClientHome({ user }) {
     ).catch(console.error);
   }, [pantry, pantryLoaded, storageKey, userKey]);
 
+  useEffect(() => {
+    if (!userKey) return;
+    try {
+      const saved = JSON.parse(localStorage.getItem(shoppingStorageKey) || "[]");
+      setShoppingList(Array.isArray(saved) ? saved : []);
+    } catch {
+      setShoppingList([]);
+    }
+  }, [shoppingStorageKey, userKey]);
+
+  useEffect(() => {
+    if (!userKey) return;
+    localStorage.setItem(shoppingStorageKey, JSON.stringify(shoppingList));
+  }, [shoppingList, shoppingStorageKey, userKey]);
+
   const addIngredient = () => {
     if (!input.trim()) return;
     const name = input.toLowerCase().trim();
@@ -190,6 +207,25 @@ export default function ClientHome({ user }) {
     setEditingName("");
     setEditingExpiry("");
   };
+
+  const getMissingIngredients = (recipe) =>
+    recipe.ingredients.filter((ing) => !pantryNames.includes(ing.name));
+
+  const addMissingToShoppingList = (recipe) => {
+    const missing = getMissingIngredients(recipe).map((ing) =>
+      getScaledIngredient(ing, recipe.servings),
+    );
+    if (missing.length === 0) return;
+    const existingNames = new Set(shoppingList.map((item) => item.name));
+    const next = missing.filter((item) => !existingNames.has(item.name));
+    if (next.length === 0) return;
+    setShoppingList([...shoppingList, ...next]);
+  };
+
+  const removeShoppingItem = (name) =>
+    setShoppingList(shoppingList.filter((item) => item.name !== name));
+
+  const clearShoppingList = () => setShoppingList([]);
 
   const handleBarcodeScanned = (ingredient) => {
     const name = ingredient.name.toLowerCase().trim();
@@ -1043,6 +1079,71 @@ export default function ClientHome({ user }) {
             </div>
           </div>
         </div>
+
+        {/* SHOPPING LIST */}
+        <div style={{ ...S.card, marginTop: "1.25rem" }}>
+          <div style={S.cardHeader}>
+            <h2 style={S.cardTitle}>Shopping list</h2>
+            <button
+              style={S.pillBtn(false)}
+              onClick={clearShoppingList}
+              disabled={shoppingList.length === 0}
+            >
+              Clear
+            </button>
+          </div>
+          <div style={S.cardBody}>
+            {shoppingList.length === 0 ? (
+              <p style={{ color: "#c4bfb3", fontSize: "0.85rem" }}>
+                Generate a shopping list from a recipe to see missing items here.
+              </p>
+            ) : (
+              <ul
+                style={{
+                  listStyle: "none",
+                  padding: 0,
+                  margin: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.55rem",
+                }}
+              >
+                {shoppingList.map((item) => (
+                  <li
+                    key={item.name}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "0.75rem",
+                      padding: "0.75rem 0.9rem",
+                      borderRadius: "12px",
+                      background: "#f8fafc",
+                      border: "1px solid #e5e7eb",
+                    }}
+                  >
+                    <span style={{ color: "#374151", fontSize: "0.9rem" }}>
+                      {item.name} — {item.scaledQuantity} {item.unit}
+                    </span>
+                    <button
+                      onClick={() => removeShoppingItem(item.name)}
+                      style={{
+                        fontSize: "0.75rem",
+                        color: "#ef4444",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        padding: "0",
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
       </main>
 
       {/* MODAL */}
@@ -1142,47 +1243,82 @@ export default function ClientHome({ user }) {
                     alignItems: "center",
                     justifyContent: "space-between",
                     marginBottom: "0.6rem",
+                    gap: "0.75rem",
                   }}
                 >
-                  <h3
-                    style={{
-                      fontFamily: "'DM Serif Display', serif",
-                      fontSize: "1rem",
-                      color: "#1a2e18",
-                      margin: 0,
-                    }}
-                  >
-                    Ingredients
-                  </h3>
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.35rem",
-                      fontSize: "0.72rem",
-                      color: "#9ca3af",
-                    }}
-                  >
-                    Servings
-                    <input
-                      type="number"
-                      min={1}
-                      value={selectedServings}
-                      onChange={(e) => {
-                        const n = Number(e.target.value);
-                        setSelectedServings(isNaN(n) ? 1 : Math.max(1, n));
-                      }}
+                  <div>
+                    <h3
                       style={{
-                        width: "44px",
-                        padding: "2px 5px",
-                        border: "1px solid #e9e6df",
-                        borderRadius: "6px",
-                        fontSize: "0.78rem",
-                        fontFamily: "'DM Sans', sans-serif",
+                        fontFamily: "'DM Serif Display', serif",
+                        fontSize: "1rem",
+                        color: "#1a2e18",
+                        margin: 0,
                       }}
-                    />
-                  </label>
+                    >
+                      Ingredients
+                    </h3>
+                    <p
+                      style={{
+                        fontSize: "0.72rem",
+                        color: "#6b7280",
+                        margin: "0.35rem 0 0",
+                      }}
+                    >
+                      Missing items can be added to your shopping list.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => addMissingToShoppingList(selectedRecipe)}
+                    style={{
+                      fontSize: "0.75rem",
+                      color: "#fff",
+                      background: "#2d5a27",
+                      border: "none",
+                      borderRadius: "10px",
+                      padding: "8px 14px",
+                      cursor: "pointer",
+                      fontFamily: "'DM Sans', sans-serif",
+                    }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background = "#234a1e")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.background = "#2d5a27")
+                    }
+                  >
+                    Add missing items
+                  </button>
                 </div>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.35rem",
+                    fontSize: "0.72rem",
+                    color: "#9ca3af",
+                    marginBottom: "0.6rem",
+                  }}
+                >
+                  Servings
+                  <input
+                    type="number"
+                    min={1}
+                    value={selectedServings}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      setSelectedServings(isNaN(n) ? 1 : Math.max(1, n));
+                    }}
+                    style={{
+                      width: "44px",
+                      padding: "2px 5px",
+                      border: "1px solid #e9e6df",
+                      borderRadius: "6px",
+                      fontSize: "0.78rem",
+                      fontFamily: "'DM Sans', sans-serif",
+                      background: "#fff",
+                    }}
+                  />
+                </label>
                 <p
                   style={{
                     fontSize: "0.68rem",
