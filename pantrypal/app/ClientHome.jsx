@@ -88,6 +88,9 @@ export default function ClientHome({ user }) {
   const [dismissedAlerts, setDismissedAlerts] = useState([]);
   const [addFocus, setAddFocus] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
+  const [editingName, setEditingName] = useState("");
+  const [editingExpiry, setEditingExpiry] = useState("");
 
   const userKey = useMemo(() => user?.uid || user?.email || "guest", [user]);
   const storageKey = useMemo(() => `pantry-${userKey}`, [userKey]);
@@ -157,6 +160,35 @@ export default function ClientHome({ user }) {
     setPantry([...pantry, { name, expiry: expiryInput || null }]);
     setInput("");
     setExpiryInput("");
+  };
+
+  const startEditItem = (item) => {
+    setEditingItem(item.name);
+    setEditingName(item.name);
+    setEditingExpiry(item.expiry || "");
+  };
+
+  const saveEditedItem = () => {
+    const name = editingName.toLowerCase().trim();
+    if (!name) return;
+    if (pantry.some((i) => i.name === name && i.name !== editingItem)) return;
+
+    setPantry(
+      pantry.map((i) =>
+        i.name === editingItem
+          ? { name, expiry: editingExpiry || null }
+          : i,
+      ),
+    );
+    setEditingItem(null);
+    setEditingName("");
+    setEditingExpiry("");
+  };
+
+  const cancelEdit = () => {
+    setEditingItem(null);
+    setEditingName("");
+    setEditingExpiry("");
   };
 
   const handleBarcodeScanned = (ingredient) => {
@@ -673,6 +705,7 @@ export default function ClientHome({ user }) {
                   {filteredPantry.map((item) => {
                     const u = getUrgency(item.expiry);
                     const d = daysUntilExpiry(item.expiry);
+                    const editing = editingItem === item.name;
                     return (
                       <div
                         key={item.name}
@@ -684,35 +717,60 @@ export default function ClientHome({ user }) {
                           (e.currentTarget.style.background = "#fafaf8")
                         }
                       >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.55rem",
-                            minWidth: 0,
-                          }}
-                        >
-                          <span
+                        {editing ? (
+                          <div style={{ flex: 1, display: "flex", gap: "0.55rem", alignItems: "center" }}>
+                            <input
+                              style={{
+                                flex: 1,
+                                border: "1px solid #e9e6df",
+                                borderRadius: "8px",
+                                padding: "5px 9px",
+                                fontSize: "0.85rem",
+                                fontFamily: "'DM Sans', sans-serif",
+                                color: "#1c1c1c",
+                                background: "#fff",
+                              }}
+                              value={editingName}
+                              onChange={(e) => setEditingName(e.target.value)}
+                            />
+                            <input
+                              type="date"
+                              style={S.dateInput}
+                              value={editingExpiry}
+                              onChange={(e) => setEditingExpiry(e.target.value)}
+                            />
+                          </div>
+                        ) : (
+                          <div
                             style={{
-                              width: 6,
-                              height: 6,
-                              borderRadius: "50%",
-                              background: URGENCY[u].dot,
-                              flexShrink: 0,
-                            }}
-                          />
-                          <span
-                            style={{
-                              fontSize: "0.85rem",
-                              color: "#374151",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.55rem",
+                              minWidth: 0,
                             }}
                           >
-                            {item.name}
-                          </span>
-                        </div>
+                            <span
+                              style={{
+                                width: 6,
+                                height: 6,
+                                borderRadius: "50%",
+                                background: URGENCY[u].dot,
+                                flexShrink: 0,
+                              }}
+                            />
+                            <span
+                              style={{
+                                fontSize: "0.85rem",
+                                color: "#374151",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {item.name}
+                            </span>
+                          </div>
+                        )}
                         <div
                           style={{
                             display: "flex",
@@ -722,40 +780,119 @@ export default function ClientHome({ user }) {
                             marginLeft: "0.5rem",
                           }}
                         >
-                          {u !== "none" && (
+                          {!editing && u !== "none" && (
                             <span
                               className={`text-xs px-1.5 py-0.5 rounded-full border font-medium ${URGENCY[u].pill}`}
                             >
                               {URGENCY[u].label(d)}
                             </span>
                           )}
-                          {u === "none" && item.expiry && (
+                          {!editing && u === "none" && item.expiry && (
                             <span
                               style={{ fontSize: "0.68rem", color: "#c4bfb3" }}
                             >
                               {d}d
                             </span>
                           )}
-                          <button
-                            onClick={() => removeIngredient(item.name)}
-                            style={{
-                              fontSize: "0.65rem",
-                              color: "#d1d5db",
-                              background: "none",
-                              border: "none",
-                              cursor: "pointer",
-                              padding: "2px",
-                              lineHeight: 1,
-                            }}
-                            onMouseEnter={(e) =>
-                              (e.target.style.color = "#ef4444")
-                            }
-                            onMouseLeave={(e) =>
-                              (e.target.style.color = "#d1d5db")
-                            }
-                          >
-                            ✕
-                          </button>
+                          {editing ? (
+                            <>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  saveEditedItem();
+                                }}
+                                style={{
+                                  fontSize: "0.65rem",
+                                  color: "#1f2937",
+                                  background: "none",
+                                  border: "none",
+                                  cursor: "pointer",
+                                  padding: "2px 4px",
+                                  lineHeight: 1,
+                                }}
+                                onMouseEnter={(e) =>
+                                  (e.target.style.color = "#16a34a")
+                                }
+                                onMouseLeave={(e) =>
+                                  (e.target.style.color = "#1f2937")
+                                }
+                              >
+                                Save
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  cancelEdit();
+                                }}
+                                style={{
+                                  fontSize: "0.65rem",
+                                  color: "#9ca3af",
+                                  background: "none",
+                                  border: "none",
+                                  cursor: "pointer",
+                                  padding: "2px 4px",
+                                  lineHeight: 1,
+                                }}
+                                onMouseEnter={(e) =>
+                                  (e.target.style.color = "#6b7280")
+                                }
+                                onMouseLeave={(e) =>
+                                  (e.target.style.color = "#9ca3af")
+                                }
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  startEditItem(item);
+                                }}
+                                style={{
+                                  fontSize: "0.65rem",
+                                  color: "#6b7280",
+                                  background: "none",
+                                  border: "none",
+                                  cursor: "pointer",
+                                  padding: "2px 4px",
+                                  lineHeight: 1,
+                                }}
+                                onMouseEnter={(e) =>
+                                  (e.target.style.color = "#374151")
+                                }
+                                onMouseLeave={(e) =>
+                                  (e.target.style.color = "#6b7280")
+                                }
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeIngredient(item.name);
+                                }}
+                                style={{
+                                  fontSize: "0.65rem",
+                                  color: "#d1d5db",
+                                  background: "none",
+                                  border: "none",
+                                  cursor: "pointer",
+                                  padding: "2px",
+                                  lineHeight: 1,
+                                }}
+                                onMouseEnter={(e) =>
+                                  (e.target.style.color = "#ef4444")
+                                }
+                                onMouseLeave={(e) =>
+                                  (e.target.style.color = "#d1d5db")
+                                }
+                              >
+                                ✕
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
                     );
