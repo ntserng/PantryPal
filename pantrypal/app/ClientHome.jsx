@@ -13,6 +13,7 @@ import {
 } from "../lib/firebase";
 import { QUICK_ADD_INGREDIENTS, RECIPE_POOL } from "../lib/recipes";
 import BarcodeScanner from "./components/BarcodeScanner";
+import ImageIngredientImporter from "./components/ImageIngredientImporter";
 
 // ─── Expiry helpers ───────────────────────────────────────────────────────────
 
@@ -88,6 +89,7 @@ export default function ClientHome({ user }) {
   const [dismissedAlerts, setDismissedAlerts] = useState([]);
   const [addFocus, setAddFocus] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+  const [showUploader, setShowUploader] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [editingName, setEditingName] = useState("");
   const [editingExpiry, setEditingExpiry] = useState("");
@@ -258,6 +260,80 @@ export default function ClientHome({ user }) {
     const expiryStr = expiryDate.toISOString().split("T")[0];
 
     setPantry([...pantry, { name, expiry: expiryStr }]);
+  };
+
+  const handleImageImportResult = (items) => {
+    if (!Array.isArray(items) || items.length === 0) {
+      setShowUploader(false);
+      return;
+    }
+
+    // Build candidate list from quick adds and recipe ingredients
+    const recipeIngredients = RECIPE_POOL.flatMap((r) =>
+      r.ingredients.map((i) => (i && i.name ? i.name : i)),
+    );
+    const candidates = Array.from(
+      new Set([...QUICK_ADD_INGREDIENTS, ...recipeIngredients]),
+    ).map((c) => (typeof c === "string" ? c.toLowerCase() : c));
+
+    const normalize = (s) =>
+      s
+        .toString()
+        .toLowerCase()
+        .replace(/[^a-z\s\-']/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const bigrams = (str) => {
+      const s = ` ${str} `;
+      const out = [];
+      for (let i = 0; i < s.length - 1; i++) out.push(s.slice(i, i + 2));
+      return out;
+    };
+
+    const dice = (a, b) => {
+      if (!a || !b) return 0;
+      const A = bigrams(a);
+      const B = bigrams(b);
+      const setB = new Set(B);
+      let intersect = 0;
+      for (const x of A) if (setB.has(x)) intersect++;
+      return (2 * intersect) / (A.length + B.length);
+    };
+
+    const normalizedCandidates = candidates.map((c) => normalize(c));
+
+    const results = items.map((raw) => {
+      const n = normalize(raw || "");
+      if (!n) return null;
+
+      // find best candidate
+      let best = null;
+      let bestScore = 0;
+      for (let i = 0; i < normalizedCandidates.length; i++) {
+        const cand = normalizedCandidates[i];
+        const score = dice(n, cand);
+        if (score > bestScore) {
+          bestScore = score;
+          best = candidates[i];
+        }
+      }
+
+      // Accept candidate if similarity is reasonably high
+      if (bestScore >= 0.45) return best;
+
+      // fallback: return the cleaned extracted line
+      return n;
+    });
+
+    const newNames = Array.from(new Set(results.filter(Boolean))).filter(
+      (name) => !pantry.some((p) => p.name === name),
+    );
+
+    if (newNames.length > 0) {
+      setPantry([...pantry, ...newNames.map((n) => ({ name: n, expiry: null }))]);
+    }
+    setShowUploader(false);
   };
 
   const removeIngredient = (name) =>
@@ -707,6 +783,21 @@ export default function ClientHome({ user }) {
             onMouseLeave={(e) => (e.target.style.background = "#7c6b5f")}
           >
             📷
+          </button>
+          <button
+            style={{
+              ...S.addBtn,
+              fontSize: "0.75rem",
+              padding: "7px 12px",
+              background: "#6b7280",
+              marginLeft: 6,
+            }}
+            onClick={() => setShowUploader(true)}
+            title="Upload image"
+            onMouseEnter={(e) => (e.target.style.background = "#545f6a")}
+            onMouseLeave={(e) => (e.target.style.background = "#6b7280")}
+          >
+            📁
           </button>
           <button
             style={S.addBtn}
@@ -1539,6 +1630,12 @@ export default function ClientHome({ user }) {
         <BarcodeScanner
           onScan={handleBarcodeScanned}
           onClose={() => setShowScanner(false)}
+        />
+      )}
+      {showUploader && (
+        <ImageIngredientImporter
+          onClose={() => setShowUploader(false)}
+          onResult={handleImageImportResult}
         />
       )}
     </div>
